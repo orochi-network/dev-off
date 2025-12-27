@@ -31,7 +31,7 @@ done
 
 # Enable corepack
 if [ "$SKIP_COREPACK" = false ]; then
-  echo "🔧 Enabling corepack..."
+  echo "Enabling corepack..."
   corepack enable
 fi
 
