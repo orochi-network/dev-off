@@ -5,7 +5,7 @@ set -euo pipefail
 # If base revision was set, we are going to use given revision
 # BASE_REVISION="db70372fd4ecbc111cb195ebe249809d8f0768a3" curl -sL https://...
 BASE_REVISION="${BASE_REVISION:-main}"
-BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}/"
+BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}"
 
 check_sha256sum() {
   curl -sL $BASE_URL/checksum.sha256 | grep --color=never $1 | sha256sum -c --strict -
