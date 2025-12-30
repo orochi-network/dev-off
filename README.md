@@ -30,12 +30,10 @@ All repo must include `./scripts/build-prod.sh`, this will be used to build for 
 curl -sL https://raw.githubusercontent.com/orochi-network/dev-off/main/dockerfile.sh | bash -- -t node -f package.json -f node_modules -f build -c "[\"yarn\", \"start\"]"
 ```
 
-````
-
 ### Static website
 
 Build result **MUST** be in `./build`
 
 ```bash
 curl -sL https://raw.githubusercontent.com/orochi-network/dev-off/main/dockerfile.sh | bash -- -t nginx
-````
+```
