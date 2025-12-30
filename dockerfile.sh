@@ -61,11 +61,11 @@ FROM orochinetwork/ubuntu:node AS builder
 # Mount NPM access token as secret
 RUN --mount=type=secret,id=npm_access_token NPM_ACCESS_TOKEN=\$(cat /run/secrets/npm_access_token) && \\
   echo "//registry.npmjs.org/:_authToken=\$NPM_ACCESS_TOKEN" > /home/ubuntu/.npmrc && \\
-  echo "enableTelemetry: 0\nnodeLinker: node-modules\nnpmScopes:" >> /home/ubuntu/.yarnrc.yml && \\
-  echo "  orochi-network:" > /home/ubuntu/.yarnrc.yml && \\
+  echo "enableTelemetry: 0\nnodeLinker: node-modules\nnpmScopes:" > /home/ubuntu/.yarnrc.yml && \\
+  echo "  orochi-network:" >> /home/ubuntu/.yarnrc.yml && \\
   echo "    npmRegistryServer: \"https://registry.npmjs.org\"\n    npmAlwaysAuth: true" >> /home/ubuntu/.yarnrc.yml && \\
   echo "    npmAuthToken: \$NPM_ACCESS_TOKEN" >> /home/ubuntu/.yarnrc.yml && \\
-  echo "  zkdb:" > /home/ubuntu/.yarnrc.yml && \\
+  echo "  zkdb:" >> /home/ubuntu/.yarnrc.yml && \\
   echo "    npmRegistryServer: \"https://registry.npmjs.org\"\n    npmAlwaysAuth: true" >> /home/ubuntu/.yarnrc.yml && \\
   echo "    npmAuthToken: \$NPM_ACCESS_TOKEN" >> /home/ubuntu/.yarnrc.yml && \\
   mkdir -p /home/ubuntu/app && \\
@@ -100,7 +100,7 @@ EOF
 }
 
 alpine_nginx() {
-  if [[ -f "${CWD}" ]]; then
+  if [[ -f "${CWD}/nginx.conf" ]]; then
     echo "Using local ./nginx.conf"
     cat <<EOF >>$DF_BUFFER
 
