@@ -1,0 +1,5 @@
+768f0442a1ece6c89e1b6b0f4f32bd8d67f1696b7dcd0d8a9d250338086dedab  ./gpg-list.asc
+f15c4e8e374105e07ab7de3cf94e3ec6aaccd02a76ca9907368782612bc7e50f  ./configs/nginx.conf
+447988b40f30ebc31b2d82da710ce0f3f593f5b6b77e708ebfec22c7112cb53b  ./scripts/build-prod-next.sh
+3f2e3d6e7fb4843e2ff3ad3556d6fe8a5662828b9656b0d89268a4c6fc4138fa  ./scripts/build-prod-nginx.sh
+3f2e3d6e7fb4843e2ff3ad3556d6fe8a5662828b9656b0d89268a4c6fc4138fa  ./scripts/build-prod-node.sh

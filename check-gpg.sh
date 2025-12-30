@@ -7,6 +7,10 @@ set -euo pipefail
 BASE_REVISION="${BASE_REVISION:-main}"
 BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}/"
 
+check_sha256sum() {
+  curl -sL $BASE_URL/checksum.sha256 | grep --color=never $1 | sha256sum -c --strict -
+}
+
 # Clean state (important for self-hosted runners)
 rm -rf ~/.gnupg
 mkdir -p ~/.gnupg
@@ -14,7 +18,7 @@ chmod 700 ~/.gnupg
 
 # Fetch and verify allowlist
 curl -O $BASE_URL/gpg-list.asc
-curl -sL $BASE_URL/gpg-list.sha256 | sha256sum -c --strict -
+check_sha256sum "gpg-list.asc"
 
 # Import keys and trust them so Git returns 'G'
 gpg --batch --import gpg-list.asc
@@ -57,4 +61,3 @@ if [[ -n "${BASE_SHA:-}" && -n "${HEAD_SHA:-}" ]]; then
     echo "Valid: trusted signature from allowed key"
   done
 fi
-
