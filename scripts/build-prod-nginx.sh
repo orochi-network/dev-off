@@ -3,6 +3,8 @@
 # On error exit
 set -e
 
+git config --global --add safe.directory /home/ubuntu/app
+
 # Compute version info
 REV=$(git rev-parse --short HEAD)
 TAG=$(git tag --points-at HEAD 2>/dev/null || echo "")
