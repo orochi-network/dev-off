@@ -33,7 +33,7 @@ echo "//registry.npmjs.org/:_authToken=${NPM_ACCESS_TOKEN}" > "${HOME_PATH}/.npm
 
 # Create .yarnrc.yml base
 cat > "${HOME_PATH}/.yarnrc.yml" << EOF
-enableTelemetry: 0
+enableTelemetry: false
 nodeLinker: node-modules
 npmScopes:
 EOF
