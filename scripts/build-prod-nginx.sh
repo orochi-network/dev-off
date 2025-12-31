@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # On error exit
-set -e
+set -euo pipefail
 
 git config --global --add safe.directory /home/ubuntu/app
 
