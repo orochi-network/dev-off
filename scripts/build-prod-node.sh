@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # On error exit
-set -e
+set -euo pipefail
+
+git config --global --add safe.directory /home/ubuntu/app
 
 # Compute version info
 REV=$(git rev-parse --short HEAD)
