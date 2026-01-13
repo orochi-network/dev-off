@@ -8,12 +8,74 @@ BASE_REVISION="${BASE_REVISION:-main}"
 BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}"
 
 DOCKER_FILE=()
-DOCKER_COMMAND="[\"yarn\", \"start\"]"
+DOCKER_COMMAND="[\"npm\", \"start\"]"
+BUILD_COMMAND=""
+RUNNER_COMMANDS=()
+RUNNER_IMAGE=""
+DRY_RUN=false
+
+show_help() {
+  cat <<EOF
+Usage: ./dockerfile.sh [OPTIONS]
+
+Generate Dockerfile for Node.js projects with customizable runner stages.
+
+Options:
+  -t, --template TYPE        Template type: node, nginx, next, rust
+  -c, --command CMD          CMD to run (default: ["npm", "start"])
+  -f, --file FILE            File/directory to copy (can be used multiple times)
+  -b, --build CMD            Custom build command (default: uses build-prod.sh)
+  -r, --runner-image IMAGE   Custom runner image (default: node:24-alpine for node/next)
+  --run CMD                  RUN command to execute in runner stage (repeatable)
+  --dry-run                  Print Dockerfile to stdout instead of writing to file
+  -l, --list                 List all templates with their details
+  -h, --help                 Show this help message
+
+Examples:
+  # Basic Next.js project
+  ./dockerfile.sh -t next -f .next -f package.json -f node_modules -f public
+
+  # Custom runner image and CMD
+  ./dockerfile.sh -t node -r node:24-trixie-slim -f build -f package.json \\
+    -c '["node", "server.js"]'
+
+  # With post-copy RUN command and dry-run
+  ./dockerfile.sh -t next -f .next -f package.json \\
+    --run 'chmod +x /home/node/app/run-service.sh' --dry-run
+EOF
+}
+
+list_templates() {
+  cat <<EOF
+Available templates:
+
+  node    - Node.js application
+           Builder: orochinetwork/ubuntu:node
+           Runner: node:24-alpine (default)
+           Files to copy: package.json, build/, node_modules/, etc.
+
+  next    - Next.js application
+           Builder: orochinetwork/ubuntu:node
+           Runner: node:24-alpine (default, with NEXT_TELEMETRY_DISABLED=1)
+           Files to copy: .next/, package.json, node_modules/, public/, next.config.*, etc.
+
+  nginx   - Static website (React, Vue, or HTML/CSS/JS)
+           Builder: orochinetwork/ubuntu:node
+           Runner: nginx:stable-alpine
+           Build output: build/ directory
+
+  rust    - Rust application (coming soon)
+EOF
+}
 
 while [[ $# -gt 0 ]]; do
   case $1 in
   -h | --help)
-    echo "./dockerfile.sh [-t|--template] [-c|--command] [-f|--file]"
+    show_help
+    exit 0
+    ;;
+  -l | --list)
+    list_templates
     exit 0
     ;;
   -t | --template)
@@ -31,6 +93,26 @@ while [[ $# -gt 0 ]]; do
     shift
     shift
     ;;
+  -b | --build)
+    BUILD_COMMAND="$2"
+    shift
+    shift
+    ;;
+  -r | --runner-image)
+    RUNNER_IMAGE="$2"
+    shift
+    shift
+    ;;
+  --run)
+    RUNNER_COMMANDS+=("$2")
+    shift
+    shift
+    ;;
+  --dry-run)
+    DRY_RUN=true
+    DF_BUFFER="/dev/stdout"
+    shift
+    ;;
   *)
     UNKNOWN_ARGS+=("$1") # Save unknown ones for later
     shift
@@ -42,7 +124,9 @@ BUILD_PROD_SCRIPT="${BASE_URL}/scripts/build-prod-${DOCKER_TEMPLATE}.sh"
 CONFIG_NGINX="${BASE_URL}/configs/nginx.conf"
 
 CWD=$(pwd)
-DF_BUFFER="${CWD}/Dockerfile"
+if [[ "$DRY_RUN" == false ]]; then
+  DF_BUFFER="${CWD}/Dockerfile"
+fi
 
 check_file() {
   if [[ ! -f "$1" ]]; then
@@ -81,7 +165,14 @@ COPY --chown=ubuntu:ubuntu . .
 USER ubuntu:ubuntu
 EOF
 
-  if [[ -f "$CWD/scripts/build-prod.sh" ]]; then
+  if [[ -n "$BUILD_COMMAND" ]]; then
+    echo "Using custom build command"
+    cat <<EOF >>$DF_BUFFER
+
+# Run custom build command
+RUN $BUILD_COMMAND
+EOF
+  elif [[ -f "$CWD/scripts/build-prod.sh" ]]; then
     echo "Using local build-prod.sh"
     cat <<EOF >>$DF_BUFFER
 
@@ -99,10 +190,77 @@ EOF
   fi
 }
 
+# Unified Alpine runner generator
+# Usage: alpine_runner <RUNNER_IMAGE> <RUNNER_USER> <RUNNER_WORKDIR> [EXPOSE_PORT]
+alpine_runner() {
+  local RUNNER_IMAGE=$1
+  local RUNNER_USER=$2
+  local RUNNER_WORKDIR=$3
+  local EXPOSE_PORT=${4:-""}
+  local EXTRA_ENV=${5:-""}
+
+  cat <<EOF >>$DF_BUFFER
+
+# Use ${RUNNER_IMAGE} as runner
+FROM ${RUNNER_IMAGE} AS runner
+${EXTRA_ENV}
+# Make app folder for application
+RUN mkdir -p ${RUNNER_WORKDIR} && \\
+  chown -R ${RUNNER_USER} ${RUNNER_WORKDIR} && \\
+  chown -R ${RUNNER_USER%%:*} /home/${RUNNER_USER%%:*} && \\
+  chmod -R 750 ${RUNNER_WORKDIR}
+
+# Set default working dir
+WORKDIR ${RUNNER_WORKDIR}
+EOF
+
+  # Handle file copying for all templates except nginx (which handles its own copying)
+  if [[ "$DOCKER_TEMPLATE" != "nginx" ]]; then
+    for item in "${DOCKER_FILE[@]}"; do
+      echo "Copy file: ${item}"
+      echo "COPY --from=builder --chown=${RUNNER_USER} /home/ubuntu/app/${item} ./${item}" >>$DF_BUFFER
+    done
+  fi
+
+  # Add any custom RUN commands after copying files
+  if [[ ${#RUNNER_COMMANDS[@]} -gt 0 ]]; then
+    for cmd in "${RUNNER_COMMANDS[@]}"; do
+      echo "RUN ${cmd}" >>$DF_BUFFER
+    done
+  fi
+
+  cat <<EOF >>$DF_BUFFER
+
+# Switch to ${RUNNER_USER} user
+USER ${RUNNER_USER}
+EOF
+
+  if [[ -n "$EXPOSE_PORT" ]]; then
+    cat <<EOF >>$DF_BUFFER
+
+# Expose port ${EXPOSE_PORT}
+EXPOSE ${EXPOSE_PORT}
+EOF
+  fi
+
+  cat <<EOF >>$DF_BUFFER
+
+# Execute command
+CMD ${DOCKER_COMMAND}
+EOF
+}
+
 alpine_nginx() {
+  local USE_LOCAL_CONF=false
+
   if [[ -f "${CWD}/nginx.conf" ]]; then
     echo "Using local ./nginx.conf"
-    cat <<EOF >>$DF_BUFFER
+    USE_LOCAL_CONF=true
+  else
+    echo "Using remote nginx.conf"
+  fi
+
+  cat <<EOF >>$DF_BUFFER
 
 # Use stable nginx on alpine
 FROM nginx:stable-alpine AS runner
@@ -111,109 +269,57 @@ FROM nginx:stable-alpine AS runner
 RUN chown -R nginx:nginx /var/cache/nginx && \\
   touch /run/nginx.pid && \\
   chown -R nginx:nginx /run/nginx.pid
-
-WORKDIR /usr/share/nginx/html
-
-# Copy production & nginx config
-COPY --from=builder --chown=nginx:nginx /home/ubuntu/app/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder --chown=nginx:nginx /home/ubuntu/app/build /usr/share/nginx/html/
-
-# Change default user to ngin:nginx
-USER nginx:nginx
-
-# Expose http port 80
-EXPOSE 80
 EOF
-  else
-    echo "Using remote nginx.conf"
+
+  if [[ "$USE_LOCAL_CONF" == false ]]; then
     cat <<EOF >>$DF_BUFFER
-
-# Use stable nginx on alpine
-FROM nginx:stable-alpine AS runner
-
-# Chown cache and pid to nginx:nginx
-RUN chown -R nginx:nginx /var/cache/nginx && \\
-  touch /run/nginx.pid && \\
-  chown -R nginx:nginx /run/nginx.pid && \\
   curl -o /etc/nginx/conf.d/default.conf ${CONFIG_NGINX} && \\
   chown nginx:nginx /etc/nginx/conf.d/default.conf
+EOF
+  fi
+
+  cat <<EOF >>$DF_BUFFER
 
 WORKDIR /usr/share/nginx/html
 
 # Copy production & nginx config
-COPY --from=builder --chown=nginx:nginx /home/ubuntu/app/build /usr/share/nginx/html/
+EOF
 
-# Change default user to ngin:nginx
+  if [[ "$USE_LOCAL_CONF" == true ]]; then
+    echo "COPY --from=builder --chown=nginx:nginx /home/ubuntu/app/nginx.conf /etc/nginx/conf.d/default.conf" >>$DF_BUFFER
+  fi
+
+  echo "COPY --from=builder --chown=nginx:nginx /home/ubuntu/app/build /usr/share/nginx/html/" >>$DF_BUFFER
+
+  # Add any custom RUN commands after copying files
+  if [[ ${#RUNNER_COMMANDS[@]} -gt 0 ]]; then
+    for cmd in "${RUNNER_COMMANDS[@]}"; do
+      echo "RUN ${cmd}" >>$DF_BUFFER
+    done
+  fi
+
+  cat <<EOF >>$DF_BUFFER
+
+# Change default user to nginx:nginx
 USER nginx:nginx
 
 # Expose http port 80
 EXPOSE 80
+
+CMD ${DOCKER_COMMAND}
 EOF
-  fi
 }
 
 alpine_node() {
-  check_file $CWD/package.json
-  cat <<EOF >>$DF_BUFFER
-
-# Use stable node on alpine
-FROM node:24-alpine AS runner
-
-# Make app folder for application
-RUN mkdir -p /home/node/app && \\
-  chown -R node:node /home/node && \\
-  chmod -R 750 /home/node/app
-
-# Set default working dir 
-WORKDIR /home/node/app
-EOF
-
-  for item in "${DOCKER_FILE[@]}"; do
-    echo "Copy file: ${item}"
-    echo "COPY --from=builder --chown=node:node /home/ubuntu/app/${item} ./${item}" >>$DF_BUFFER
-  done
-
-  cat <<EOF >>$DF_BUFFER
-
-# Switch to node:node user
-USER node:node
-
-# Execute command
-CMD ${DOCKER_COMMAND}
-EOF
+  check_file "$CWD/package.json"
+  local runner="${RUNNER_IMAGE:-node:24-alpine}"
+  alpine_runner "$runner" "node:node" "/home/node/app"
 }
 
 alpine_next() {
-  check_file $CWD/package.json
-  cat <<EOF >>$DF_BUFFER
-
-# Use stable nginx on alpine
-FROM node:24-alpine AS runner
-
-ENV NEXT_TELEMETRY_DISABLED=1
-
-# Make app folder for application
-RUN mkdir -p /home/node/app && \\
-  chown -R node:node /home/node && \\
-  chmod -R 750 /home/node/app
-
-# Set default working dir 
-WORKDIR /home/node/app
-EOF
-
-  for item in "${DOCKER_FILE[@]}"; do
-    echo "Copy file: ${item}"
-    echo "COPY --from=builder --chown=node:node /home/ubuntu/app/${item} ./${item}" >>$DF_BUFFER
-  done
-
-  cat <<EOF >>$DF_BUFFER
-
-# Switch to node:node user
-USER node:node
-
-# Execute command
-CMD ${DOCKER_COMMAND}
-EOF
+  check_file "$CWD/package.json"
+  local runner="${RUNNER_IMAGE:-node:24-alpine}"
+  alpine_runner "$runner" "node:node" "/home/node/app" "" "ENV NEXT_TELEMETRY_DISABLED=1"
 }
 
 echo "Generating Dockerfile using template: ${DOCKER_TEMPLATE}"
@@ -221,7 +327,7 @@ case $DOCKER_TEMPLATE in
 node)
   echo "Using @orochi-network/ubuntu:node builder"
   ubuntu_builder
-  echo "Using node:24-alpine runner"
+  echo "Using ${RUNNER_IMAGE:-node:24-alpine} runner"
   alpine_node
   ;;
 nginx)
@@ -233,7 +339,7 @@ nginx)
 next)
   echo "Using @orochi-network/ubuntu:node builder"
   ubuntu_builder
-  echo "Using node:24-alpine runner"
+  echo "Using ${RUNNER_IMAGE:-node:24-alpine} runner"
   alpine_next
   ;;
 rust) ;;
