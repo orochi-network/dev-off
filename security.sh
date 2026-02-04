@@ -4,6 +4,7 @@
 
 # Define the output file name
 OUTPUT_FILE="gpg-list.asc"
+rm -f $OUTPUT_FILE
 
 for file in ./gpg/*.asc; do
     # Check if it is a regular file
