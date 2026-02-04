@@ -205,8 +205,12 @@ generate_copy_instructions() {
 
   for item in "${DOCKER_FILE[@]}"; do
     if [[ "$item" == *";"* ]]; then
-      # Two arguments: full paths
+      # Two arguments: custom source and destination paths
       IFS=';' read -r src dst <<< "$item"
+      # Prepend BUILDER_WORKDIR for relative source paths
+      if [[ "$src" != /* ]]; then
+        src="${BUILDER_WORKDIR}/${src}"
+      fi
       echo "Copy file (custom): ${src} → ${dst}" >&2
       echo "COPY --from=builder --chown=${RUNNER_USER}:${RUNNER_GROUP} ${src} ${dst}"
     else
