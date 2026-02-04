@@ -31,6 +31,7 @@ RUNNER_IMAGE=""
 DRY_RUN=false
 EXTRA_ENV=""
 EXPOSE_PORT=""
+ENV_FILE=""
 
 show_help() {
   cat <<EOF
@@ -45,6 +46,7 @@ Options:
                              Format: "file" or "src;dst" for custom paths
   -b, --build CMD            Custom build command (default: uses build-prod.sh)
   -r, --runner-image IMAGE   Custom runner image (default: node:24-alpine for node/next)
+  -e, --env-file FILE        Copy specified .env file as .env before build
   --run CMD                  RUN command to execute in runner stage (repeatable)
   --dry-run                  Print Dockerfile to stdout instead of writing to file
   -l, --list                 List all templates with their details
@@ -138,6 +140,11 @@ while [[ $# -gt 0 ]]; do
     ;;
   --run)
     RUNNER_COMMANDS+=("$2")
+    shift
+    shift
+    ;;
+  -e | --env-file)
+    ENV_FILE="$2"
     shift
     shift
     ;;
@@ -244,6 +251,16 @@ generate_build_command() {
 }
 
 # ============================================================================
+# Generate env file copy
+# ============================================================================
+generate_env_copy() {
+  if [[ -n "$ENV_FILE" ]]; then
+    echo "Copying env file: ${ENV_FILE} → ./.env" >&2
+    echo "COPY --chown=${BUILDER_USER}:${BUILDER_GROUP} ${ENV_FILE} ./.env"
+  fi
+}
+
+# ============================================================================
 # Process template
 # ============================================================================
 echo "Generating Dockerfile using template: ${DOCKER_TEMPLATE}"
@@ -260,6 +277,7 @@ fi
 generate_copy_instructions > /tmp/copy_instructions.txt
 generate_runner_commands > /tmp/runner_commands.txt
 generate_build_command > /tmp/build_command.txt
+generate_env_copy > /tmp/env_copy.txt
 
 # Read template and replace simple variables using perl
 perl -pe "
@@ -282,6 +300,8 @@ while IFS= read -r line; do
     cat /tmp/copy_instructions.txt
   elif [[ "$line" == "{{runner_commands}}" ]]; then
     cat /tmp/runner_commands.txt
+  elif [[ "$line" == "{{env_copy}}" ]]; then
+    cat /tmp/env_copy.txt
   else
     echo "$line"
   fi
@@ -291,7 +311,7 @@ done < /tmp/dockerfile_partial.txt > /tmp/dockerfile_pre_final.txt
 awk 'BEGIN {blank=0} /^[[:space:]]*$/ {blank++; if(blank==1) print; next} {blank=0; print}' /tmp/dockerfile_pre_final.txt > "$DF_BUFFER"
 
 # Clean up temp files
-rm -f /tmp/dockerfile_partial.txt /tmp/copy_instructions.txt /tmp/runner_commands.txt /tmp/build_command.txt /tmp/dockerfile_pre_final.txt
+rm -f /tmp/dockerfile_partial.txt /tmp/copy_instructions.txt /tmp/runner_commands.txt /tmp/build_command.txt /tmp/env_copy.txt /tmp/dockerfile_pre_final.txt
 
 if [[ "$DRY_RUN" == false ]]; then
   echo "Dockerfile generated successfully: $DF_BUFFER"

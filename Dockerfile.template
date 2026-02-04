@@ -23,6 +23,7 @@ WORKDIR ${BUILDER_WORKDIR}
 
 # Copy the application code as the non-root user
 COPY --chown={{builder_user}}:{{builder_group}} . .
+{{env_copy}}
 
 # Switch to non-root {{builder_user}}:{{builder_group}}
 USER {{builder_user}}:{{builder_group}}
