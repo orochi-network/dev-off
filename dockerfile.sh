@@ -186,8 +186,8 @@ nginx)
   RUNNER_WORKDIR="/usr/share/nginx/html"
   DOCKER_COMMAND="[\"nginx\", \"-g\", \"daemon off;\"]"
   EXPOSE_PORT=$'\nEXPOSE 80'
-  # Fix permissions for non-root nginx: /var/cache/nginx (temp dirs) and /run/nginx.pid
-  RUNNER_COMMANDS+=("chown -R nginx:nginx /var/cache/nginx && touch /run/nginx.pid && chown -R nginx:nginx /run/nginx.pid")
+  # Fix permissions for non-root nginx: create cache dirs, relocate pid, disable 'user' directive
+  RUNNER_COMMANDS+=("mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp && chown -R nginx:nginx /var/cache/nginx && sed -i 's|^user  nginx;|# user  nginx;|' /etc/nginx/nginx.conf && sed -i 's|pid */run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf")
   # For nginx, if no files specified, use default build directory
   if [[ ${#DOCKER_FILE[@]} -eq 0 ]]; then
     DOCKER_FILE=("build;/usr/share/nginx/html")

@@ -20,7 +20,6 @@ GITHUB_USERS=(
   nguyendinhthang3101
   SangTran-127
   ThanhNguyen03
-  wonrax
 )
 
 OUTPUT="ssh-allowed-signers"
