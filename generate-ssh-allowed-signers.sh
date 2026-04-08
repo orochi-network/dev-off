@@ -8,18 +8,10 @@ set -euo pipefail
 
 # GitHub usernames — mirrors the gpg/ folder (one entry per *.asc file)
 GITHUB_USERS=(
-  alothanhh
-  BaoNinh2808
-  brianw3b
-  CaoHoaiTan
+  brng1151
   chiro-hiro
-  Github
-  harris1111
-  hungnguyen18
-  ngotrongphuc
-  nguyendinhthang3101
-  SangTran-127
-  ThanhNguyen03
+  bao-ninh-orochi
+  chirojr
 )
 
 OUTPUT="ssh-allowed-signers"

@@ -3,4 +3,4 @@ f15c4e8e374105e07ab7de3cf94e3ec6aaccd02a76ca9907368782612bc7e50f  ./configs/ngin
 d5fa3db9ee4a084b40e698fcb10c553d0c0e643a734975f630e6667b79176a37  ./scripts/build-prod-next.sh
 1f9ae9fd53d2f0045dfaca6003162da23e922408e39486327ea048d250fb777e  ./scripts/build-prod-nginx.sh
 1f9ae9fd53d2f0045dfaca6003162da23e922408e39486327ea048d250fb777e  ./scripts/build-prod-node.sh
-dbcc2b465b545ac1bd7e86828d80219dc2f374f5c1fc742b6d9352dd25a0c55b  ./ssh-allowed-signers
+018f9c420625784e70e43aaa04d67a2c7489a7771df16114aa25e7c7766159eb  ./ssh-allowed-signers
