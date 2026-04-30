@@ -32,6 +32,7 @@ DRY_RUN=false
 EXTRA_ENV=""
 EXPOSE_PORT=""
 ENV_FILE=""
+COREPACK_ENABLE=""
 
 show_help() {
   cat <<EOF
@@ -178,6 +179,7 @@ check_file() {
 case $DOCKER_TEMPLATE in
 node)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
+  COREPACK_ENABLE=" && corepack enable"
   ;;
 nginx)
   RUNNER_BASE_IMAGE="nginx:stable-alpine"
@@ -196,6 +198,7 @@ nginx)
 next)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
   EXTRA_ENV=$'\nENV NEXT_TELEMETRY_DISABLED=1'
+  COREPACK_ENABLE=" && corepack enable"
   ;;
 esac
 
@@ -293,6 +296,7 @@ perl -pe "
   s|\{\{runner_base_image\}\}|${RUNNER_BASE_IMAGE}|g;
   s|\{\{runner_user\}\}|${RUNNER_USER}|g;
   s|\{\{runner_group\}\}|${RUNNER_GROUP}|g;
+  s|\{\{corepack_enable\}\}|${COREPACK_ENABLE}|g;
 " "$TEMPLATE_FILE" | \
 perl -pe "s|\{\{extra_env\}\}|${EXTRA_ENV}|g" | \
 perl -pe "s|\{\{expose_port\}\}|${EXPOSE_PORT}|g" | \
