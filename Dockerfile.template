@@ -40,7 +40,8 @@ ARG RUNNER_WORKDIR=/home/{{runner_user}}/app
 RUN mkdir -p ${RUNNER_WORKDIR} && \
   chown -R {{runner_user}}:{{runner_group}} ${RUNNER_WORKDIR} && \
   chown -R {{runner_user}} /home/{{runner_user}} && \
-  chmod -R 750 ${RUNNER_WORKDIR}
+  chmod -R 750 ${RUNNER_WORKDIR} && \
+  corepack enable
 
 # Set default working dir
 WORKDIR ${RUNNER_WORKDIR}
