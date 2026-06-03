@@ -1,29 +1,40 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# Define the output file name
+# ============================================================================
+# Rebuild the GPG allowlist (gpg-list.asc) from the individual keys in gpg/,
+# then refresh checksum.sha256 via the shared generator.
+#
+# Run this after adding/removing a key in gpg/ and commit the result.
+# ============================================================================
+
+cd "$(dirname "$0")"
+
 OUTPUT_FILE="gpg-list.asc"
-rm -f $OUTPUT_FILE
+rm -f "$OUTPUT_FILE"
 
-for file in ./gpg/*.asc; do
-    # Check if it is a regular file
-    # Exclude the output file itself and the script itself to prevent recursion/errors
-    if [ -f "$file" ]; then
-        
-        # Append content to output
-        cat "$file" >> "$OUTPUT_FILE"
+shopt -s nullglob
+asc_files=(./gpg/*.asc)
+if [[ ${#asc_files[@]} -eq 0 ]]; then
+  echo "ERROR: no keys found in gpg/ — refusing to write an empty allowlist" >&2
+  exit 1
+fi
 
-        # $(tail -c 1 "$file") gets the last byte. 
-        # If it was a newline, Bash strips it -> string is empty.
-        # If it was text, the string is NOT empty.
-        if [ -n "$(tail -c 1 "$file")" ]; then
-            # If not empty, it means the file didn't end with \n, so we add one.
-            echo "" >> "$OUTPUT_FILE"
-        fi
-    fi
+for file in "${asc_files[@]}"; do
+  # Only regular files
+  [[ -f "$file" ]] || continue
+
+  # Append content to output
+  cat "$file" >> "$OUTPUT_FILE"
+
+  # Ensure each block ends with a newline. $(tail -c 1) is empty when the last
+  # byte is a newline (Bash strips it), non-empty otherwise.
+  if [[ -n "$(tail -c 1 "$file")" ]]; then
+    echo "" >> "$OUTPUT_FILE"
+  fi
 done
 
-echo "Done! All ASC files merged into $OUTPUT_FILE"
+echo "Done! ${#asc_files[@]} ASC file(s) merged into $OUTPUT_FILE"
 
-# Update checksum file
-sha256sum ./gpg-list.asc ./configs/* ./scripts/* >checksum.sha256
-
+# Refresh checksums via the single source of truth.
+./generate-checksums.sh

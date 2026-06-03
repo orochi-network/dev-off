@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Write credential files with owner-only permissions (0600). This script's whole
+# purpose is to leave .npmrc/.yarnrc.yml on disk for a subsequent build step, so
+# we deliberately do NOT delete them here — but we do restrict their permissions.
+umask 077
+
 # Default values
 HOME_PATH="${HOME_PATH:-/home/ubuntu}"
 NPM_ACCESS_TOKEN="${NPM_ACCESS_TOKEN:?Error: NPM_ACCESS_TOKEN is required}"

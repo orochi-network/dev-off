@@ -1,0 +1,18 @@
+# Local environment / secrets — never commit real values (use .env.example)
+.env
+.env.*
+!.env.example
+
+# Runtime artifacts produced by the check scripts on CI runners
+.allowed-keyids.txt
+.allowed-ssh-fingerprints.txt
+gpg-list.asc.1
+*.bak
+
+# Generated Dockerfiles (templates live in Dockerfile.template)
+/Dockerfile
+
+# Editor / tooling
+.claude/
+.DS_Store
+*.swp

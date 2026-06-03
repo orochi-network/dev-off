@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 # If base revision was set, we are going to use given revision
 # BASE_REVISION="db70372fd4ecbc111cb195ebe249809d8f0768a3" curl -sL https://...
@@ -23,6 +23,7 @@ RUNNER_WORKDIR="/home/node/app"
 # ============================================================================
 # CLI variables
 # ============================================================================
+DOCKER_TEMPLATE=""
 DOCKER_FILE=()
 DOCKER_COMMAND="[\"npm\", \"start\"]"
 BUILD_COMMAND=""
@@ -33,6 +34,11 @@ EXTRA_ENV=""
 EXPOSE_PORT=""
 ENV_FILE=""
 COREPACK_ENABLE=""
+UNKNOWN_ARGS=()
+
+# Templates that this script knows how to generate. Add new templates here and
+# extend the "Template-specific overrides" case below. See DOCKERFILE.md.
+SUPPORTED_TEMPLATES=("node" "nginx" "next")
 
 show_help() {
   cat <<EOF
@@ -41,7 +47,7 @@ Usage: ./dockerfile.sh [OPTIONS]
 Generate Dockerfile for Node.js projects with customizable runner stages.
 
 Options:
-  -t, --template TYPE        Template type: node, nginx, next, rust
+  -t, --template TYPE        Template type: node, nginx, next
   -c, --command CMD          CMD to run (default: ["npm", "start"])
   -f, --file FILE            File/directory to copy (can be used multiple times)
                              Format: "file" or "src;dst" for custom paths
@@ -100,7 +106,8 @@ Available templates:
            Runner: nginx:stable-alpine
            Build output: build/ directory
 
-  rust    - Rust application (coming soon)
+Note: 'rust' is not implemented yet. To add a new template, see the
+"Adding a new template" section in DOCKERFILE.md.
 EOF
 }
 
@@ -161,6 +168,41 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# ============================================================================
+# Validate CLI input (fail fast instead of emitting a broken Dockerfile)
+# ============================================================================
+if [[ ${#UNKNOWN_ARGS[@]} -gt 0 ]]; then
+  echo "Error: unknown argument(s): ${UNKNOWN_ARGS[*]}" >&2
+  echo "Run '$0 --help' for usage." >&2
+  exit 1
+fi
+
+if [[ -z "$DOCKER_TEMPLATE" ]]; then
+  echo "Error: a template is required (-t|--template). Supported: ${SUPPORTED_TEMPLATES[*]}" >&2
+  exit 1
+fi
+
+TEMPLATE_OK=false
+for t in "${SUPPORTED_TEMPLATES[@]}"; do
+  [[ "$DOCKER_TEMPLATE" == "$t" ]] && TEMPLATE_OK=true && break
+done
+if [[ "$TEMPLATE_OK" != true ]]; then
+  echo "Error: unsupported template '${DOCKER_TEMPLATE}'. Supported: ${SUPPORTED_TEMPLATES[*]}" >&2
+  exit 1
+fi
+
+# Refuse to copy credential files into any image layer (defense-in-depth against
+# leaking npm/registry tokens from the builder into the runner image).
+for item in "${DOCKER_FILE[@]+"${DOCKER_FILE[@]}"}"; do
+  src="${item%%;*}"
+  case "$(basename "$src")" in
+  .npmrc | .yarnrc | .yarnrc.yml | .netrc)
+    echo "Error: refusing to copy credential file '${src}' into the image. Use --mount=type=secret instead." >&2
+    exit 1
+    ;;
+  esac
+done
+
 CWD=$(pwd)
 if [[ "$DRY_RUN" == false ]]; then
   DF_BUFFER="${CWD}/Dockerfile"
@@ -176,7 +218,7 @@ check_file() {
 # ============================================================================
 # Template-specific overrides
 # ============================================================================
-case $DOCKER_TEMPLATE in
+case "$DOCKER_TEMPLATE" in
 node)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
   COREPACK_ENABLE=" && corepack enable"
@@ -253,9 +295,13 @@ generate_build_command() {
     echo "  ./scripts/build-prod.sh"
   else
     echo "Using remote build script" >&2
+    echo "WARNING: no local scripts/build-prod.sh found — the generated Dockerfile" >&2
+    echo "         will fetch and execute the build script from dev-off at build time." >&2
+    echo "         Pin BASE_REVISION to a commit SHA, or commit scripts/build-prod.sh," >&2
+    echo "         to avoid trusting a moving branch. See SECURITY.md." >&2
     local build_script="${BASE_URL}/scripts/build-prod-${DOCKER_TEMPLATE}.sh"
-    echo "# Run default build script"
-    echo "RUN curl -sL ${build_script} | bash -eo pipefail"
+    echo "# Run default build script (pinned via BASE_REVISION=${BASE_REVISION})"
+    echo "RUN curl -fsSL ${build_script} | bash -eo pipefail"
   fi
 }
 
@@ -274,54 +320,70 @@ generate_env_copy() {
 # ============================================================================
 echo "Generating Dockerfile using template: ${DOCKER_TEMPLATE}"
 
+# Private working directory (avoids predictable /tmp names → symlink/race attacks
+# on shared self-hosted runners). Cleaned up on any exit.
+TMP_WORK="$(mktemp -d "${TMPDIR:-/tmp}/dockerfile.XXXXXX")"
+trap 'rm -rf "$TMP_WORK"' EXIT
+
 TEMPLATE_FILE="${CWD}/Dockerfile.template"
 if [[ ! -f "$TEMPLATE_FILE" ]]; then
   # Try to download from remote
   echo "Downloading template from ${BASE_URL}/Dockerfile.template"
-  curl -sL "${BASE_URL}/Dockerfile.template" -o /tmp/Dockerfile.template
-  TEMPLATE_FILE="/tmp/Dockerfile.template"
+  curl -fsSL "${BASE_URL}/Dockerfile.template" -o "$TMP_WORK/Dockerfile.template"
+  TEMPLATE_FILE="$TMP_WORK/Dockerfile.template"
 fi
 
 # Write multi-line content to temp files
-generate_copy_instructions > /tmp/copy_instructions.txt
-generate_runner_commands > /tmp/runner_commands.txt
-generate_build_command > /tmp/build_command.txt
-generate_env_copy > /tmp/env_copy.txt
+generate_copy_instructions > "$TMP_WORK/copy_instructions.txt"
+generate_runner_commands > "$TMP_WORK/runner_commands.txt"
+generate_build_command > "$TMP_WORK/build_command.txt"
+generate_env_copy > "$TMP_WORK/env_copy.txt"
 
-# Read template and replace simple variables using perl
-perl -pe "
-  s|\{\{builder_base_image\}\}|${BUILDER_BASE_IMAGE}|g;
-  s|\{\{builder_user\}\}|${BUILDER_USER}|g;
-  s|\{\{builder_group\}\}|${BUILDER_GROUP}|g;
-  s|\{\{runner_base_image\}\}|${RUNNER_BASE_IMAGE}|g;
-  s|\{\{runner_user\}\}|${RUNNER_USER}|g;
-  s|\{\{runner_group\}\}|${RUNNER_GROUP}|g;
-  s|\{\{corepack_enable\}\}|${COREPACK_ENABLE}|g;
-" "$TEMPLATE_FILE" | \
-perl -pe "s|\{\{extra_env\}\}|${EXTRA_ENV}|g" | \
-perl -pe "s|\{\{expose_port\}\}|${EXPOSE_PORT}|g" | \
-perl -pe "s|\{\{cmd\}\}|${DOCKER_COMMAND}|g" > /tmp/dockerfile_partial.txt
+# Replace simple placeholders. Values are passed via the environment and read
+# with $ENV{...} so that user-controlled content (commands, image names, CMD)
+# is inserted literally and can never be interpreted as perl/regex — closing a
+# Dockerfile/command-injection vector that existed when values were interpolated
+# directly into the perl source.
+builder_base_image="$BUILDER_BASE_IMAGE" \
+builder_user="$BUILDER_USER" \
+builder_group="$BUILDER_GROUP" \
+runner_base_image="$RUNNER_BASE_IMAGE" \
+runner_user="$RUNNER_USER" \
+runner_group="$RUNNER_GROUP" \
+corepack_enable="$COREPACK_ENABLE" \
+extra_env="$EXTRA_ENV" \
+expose_port="$EXPOSE_PORT" \
+cmd="$DOCKER_COMMAND" \
+perl -pe '
+  s/\{\{builder_base_image\}\}/$ENV{builder_base_image}/g;
+  s/\{\{builder_user\}\}/$ENV{builder_user}/g;
+  s/\{\{builder_group\}\}/$ENV{builder_group}/g;
+  s/\{\{runner_base_image\}\}/$ENV{runner_base_image}/g;
+  s/\{\{runner_user\}\}/$ENV{runner_user}/g;
+  s/\{\{runner_group\}\}/$ENV{runner_group}/g;
+  s/\{\{corepack_enable\}\}/$ENV{corepack_enable}/g;
+  s/\{\{extra_env\}\}/$ENV{extra_env}/g;
+  s/\{\{expose_port\}\}/$ENV{expose_port}/g;
+  s/\{\{cmd\}\}/$ENV{cmd}/g;
+' "$TEMPLATE_FILE" > "$TMP_WORK/dockerfile_partial.txt"
 
 # Now replace multi-line placeholders by reading the line and replacing when we see the marker
 while IFS= read -r line; do
   if [[ "$line" == "{{build_command}}" ]]; then
-    cat /tmp/build_command.txt
+    cat "$TMP_WORK/build_command.txt"
   elif [[ "$line" == "{{copy_instructions}}" ]]; then
-    cat /tmp/copy_instructions.txt
+    cat "$TMP_WORK/copy_instructions.txt"
   elif [[ "$line" == "{{runner_commands}}" ]]; then
-    cat /tmp/runner_commands.txt
+    cat "$TMP_WORK/runner_commands.txt"
   elif [[ "$line" == "{{env_copy}}" ]]; then
-    cat /tmp/env_copy.txt
+    cat "$TMP_WORK/env_copy.txt"
   else
     echo "$line"
   fi
-done < /tmp/dockerfile_partial.txt > /tmp/dockerfile_pre_final.txt
+done < "$TMP_WORK/dockerfile_partial.txt" > "$TMP_WORK/dockerfile_pre_final.txt"
 
 # Remove consecutive blank lines (keep only one)
-awk 'BEGIN {blank=0} /^[[:space:]]*$/ {blank++; if(blank==1) print; next} {blank=0; print}' /tmp/dockerfile_pre_final.txt > "$DF_BUFFER"
-
-# Clean up temp files
-rm -f /tmp/dockerfile_partial.txt /tmp/copy_instructions.txt /tmp/runner_commands.txt /tmp/build_command.txt /tmp/env_copy.txt /tmp/dockerfile_pre_final.txt
+awk 'BEGIN {blank=0} /^[[:space:]]*$/ {blank++; if(blank==1) print; next} {blank=0; print}' "$TMP_WORK/dockerfile_pre_final.txt" > "$DF_BUFFER"
 
 if [[ "$DRY_RUN" == false ]]; then
   echo "Dockerfile generated successfully: $DF_BUFFER"

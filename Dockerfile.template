@@ -5,7 +5,13 @@ FROM {{builder_base_image}} AS builder
 
 ARG BUILDER_WORKDIR=/home/{{builder_user}}/app
 
-# Mount NPM access token as secret
+# Mount NPM access token as secret.
+# NOTE: the token is read from a BuildKit secret (kept out of the build context),
+# but it is then written into .npmrc/.yarnrc.yml in this builder stage so the
+# build step can authenticate. Those files live only in the throwaway builder
+# stage (never COPYed into the runner), but they DO exist in builder-stage layers
+# — do not export builder cache to a registry. See SECURITY.md ("Build-time
+# credentials") for the planned single-RUN hardening.
 RUN --mount=type=secret,id=npm_access_token NPM_ACCESS_TOKEN=$(cat /run/secrets/npm_access_token) && \
   echo "//registry.npmjs.org/:_authToken=$NPM_ACCESS_TOKEN" > /home/{{builder_user}}/.npmrc && \
   echo "enableTelemetry: false\nnodeLinker: node-modules\nnpmScopes:" > /home/{{builder_user}}/.yarnrc.yml && \

@@ -1,0 +1,85 @@
+name: lint-and-test
+
+# Contributor safety net for a root-of-trust repo: catches shell bugs, stale
+# checksums, and broken Dockerfile generation before they reach 17+ consumers.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Shell lint & syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        uses: ludeeus/action-shellcheck@master
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+        with:
+          scandir: '.'
+          additional_files: 'env.sh'
+
+      - name: bash -n (syntax) on all scripts
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r -d '' f; do
+            if ! bash -n "$f"; then
+              echo "::error file=$f::bash -n failed"
+              fail=1
+            fi
+          done < <(find . -type f -name '*.sh' -not -path './.git/*' -print0)
+          exit "$fail"
+
+  checksums:
+    name: checksum.sha256 is fresh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regenerate and diff
+        run: |
+          set -euo pipefail
+          cp checksum.sha256 checksum.sha256.committed
+          ./generate-checksums.sh
+          if ! diff -u checksum.sha256.committed checksum.sha256; then
+            echo "::error::checksum.sha256 is stale. Run ./generate-checksums.sh and commit the result."
+            exit 1
+          fi
+
+      - name: Verify checksums match files
+        run: sha256sum -c --strict checksum.sha256
+
+  dockerfile-smoke:
+    name: dockerfile.sh dry-run smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate for each template
+        run: |
+          set -euo pipefail
+          for t in node next nginx; do
+            echo "--- template: $t ---"
+            out="$(./dockerfile.sh -t "$t" -f package.json --dry-run)"
+            echo "$out"
+            echo "$out" | grep -q '^FROM .* AS builder' || { echo "::error::$t: missing builder stage"; exit 1; }
+            echo "$out" | grep -q '^FROM .* AS runner'  || { echo "::error::$t: missing runner stage"; exit 1; }
+            echo "$out" | grep -q '^CMD '               || { echo "::error::$t: missing CMD"; exit 1; }
+          done
+
+      - name: Reject invalid template and unknown args
+        run: |
+          set -euo pipefail
+          ! ./dockerfile.sh -t rust --dry-run 2>/dev/null
+          ! ./dockerfile.sh --dry-run 2>/dev/null
+          ! ./dockerfile.sh -t node --bogus x --dry-run 2>/dev/null
+          ! ./dockerfile.sh -t node -f .npmrc --dry-run 2>/dev/null
+          echo "All invalid inputs correctly rejected"

@@ -7,8 +7,11 @@ set -euo pipefail
 BASE_REVISION="${BASE_REVISION:-main}"
 BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}"
 
+# Log the revision we are trusting (forensics: pin this to a commit SHA in CI).
+echo "[dev-off] check-gpg using revision: ${BASE_REVISION}" >&2
+
 check_sha256sum() {
-  curl -sL $BASE_URL/checksum.sha256 | grep --color=never $1 | sha256sum -c --strict -
+  curl -fsSL "$BASE_URL/checksum.sha256" | grep -F --color=never -- "$1" | sha256sum -c --strict -
 }
 
 # Clean state (important for self-hosted runners)
@@ -17,7 +20,7 @@ mkdir -p ~/.gnupg
 chmod 700 ~/.gnupg
 
 # Fetch and verify allowlist
-curl -O $BASE_URL/gpg-list.asc
+curl -fsSL -O "$BASE_URL/gpg-list.asc"
 check_sha256sum "gpg-list.asc"
 
 # Import keys and trust them so Git returns 'G'
@@ -31,10 +34,23 @@ gpg --show-keys --keyid-format LONG gpg-list.asc |
 # Ensure git uses gpg
 git config --global gpg.program gpg
 
-# Check commit signatures (only if BASE_SHA and HEAD_SHA are set)
-if [[ -n "${BASE_SHA:-}" && -n "${HEAD_SHA:-}" ]]; then
-  COMMITS=$(git rev-list "$BASE_SHA..$HEAD_SHA")
-  for COMMIT in $COMMITS; do
+# Check commit signatures. Fail closed: never pass silently when the range is
+# unusable. If BASE_SHA/HEAD_SHA are unset this script only imported keys, so we
+# warn loudly that NO commits were verified (manual setup usage); CI must pass
+# both SHAs for the check to be enforced.
+if [[ -z "${BASE_SHA:-}" || -z "${HEAD_SHA:-}" ]]; then
+  echo "WARNING: BASE_SHA/HEAD_SHA not set — keys imported but NO COMMITS WERE VERIFIED." >&2
+  echo "         Set BASE_SHA and HEAD_SHA to enforce GPG signature checks." >&2
+  exit 0
+fi
+
+COMMITS=$(git rev-list "$BASE_SHA..$HEAD_SHA")
+if [[ -z "$COMMITS" ]]; then
+  echo "ERROR: commit range $BASE_SHA..$HEAD_SHA is empty — refusing to pass without verifying any commit." >&2
+  exit 1
+fi
+
+for COMMIT in $COMMITS; do
     SIG=$(git log --format='%G?' -n 1 "$COMMIT")
     KEY=$(git log --format='%GK' -n 1 "$COMMIT")
     echo "Commit $COMMIT: sig=$SIG key=$KEY"
@@ -59,5 +75,4 @@ if [[ -n "${BASE_SHA:-}" && -n "${HEAD_SHA:-}" ]]; then
       exit 1
     fi
     echo "Valid: trusted signature from allowed key"
-  done
-fi
+done

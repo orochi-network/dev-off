@@ -1,0 +1,32 @@
+# Recommended .dockerignore for repositories that build with dev-off's
+# generated Dockerfile (which uses `COPY . .`). Copy this to `.dockerignore`
+# in your project root so secrets and local cruft never enter the build context.
+
+.git
+.gitignore
+
+# Secrets / credentials
+.env
+.env.*
+!.env.example
+.npmrc
+.yarnrc
+.yarnrc.yml
+.netrc
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Dependencies / build output (rebuilt inside the image)
+node_modules
+dist
+build
+.next
+coverage
+
+# Editor / OS
+.DS_Store
+.vscode
+.idea
+*.log

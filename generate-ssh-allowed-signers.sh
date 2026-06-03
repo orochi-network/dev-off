@@ -6,7 +6,11 @@
 
 set -euo pipefail
 
-# GitHub usernames — mirrors the gpg/ folder (one entry per *.asc file)
+cd "$(dirname "$0")"
+
+# GitHub usernames authorized to sign commits via SSH. This is a SECURITY
+# BOUNDARY: every key fetched here becomes a trusted signer. Add/remove entries
+# deliberately and review in a signed PR. See SECURITY.md for the onboarding flow.
 GITHUB_USERS=(
   brng1151
   chiro-hiro
@@ -15,7 +19,6 @@ GITHUB_USERS=(
 )
 
 OUTPUT="ssh-allowed-signers"
-CHECKSUM_FILE="checksum.sha256"
 
 # Write header
 cat > "$OUTPUT" <<'EOF'
@@ -47,16 +50,35 @@ for USER in "${GITHUB_USERS[@]}"; do
   echo "  $USER: $KEY_COUNT key(s) added"
 done
 
-# Update checksum.sha256 — replace existing entry or append
-NEW_HASH=$(sha256sum "./$OUTPUT" | awk '{print $1}')
-ENTRY="${NEW_HASH}  ./${OUTPUT}"
+# --------------------------------------------------------------------------
+# Drift visibility: the GPG allowlist (gpg/*.asc) and the SSH signer list are
+# two halves of the same trust anchor and should track the same people. We do
+# NOT auto-expand SSH trust (that requires a human decision), but we surface any
+# gap so maintainers notice when one side is updated without the other.
+# --------------------------------------------------------------------------
+echo ""
+echo "Trust-anchor drift check (GPG keys vs SSH signers):"
+gpg_owners=()
+for asc in ./gpg/*.asc; do
+  [[ -f "$asc" ]] || continue
+  gpg_owners+=("$(basename "$asc" .asc)")
+done
+echo "  gpg/ keys:      ${#gpg_owners[@]}"
+echo "  SSH signers:    ${#GITHUB_USERS[@]}"
+for owner in "${gpg_owners[@]}"; do
+  found=false
+  for u in "${GITHUB_USERS[@]}"; do [[ "$owner" == "$u" ]] && found=true && break; done
+  [[ "$found" == true ]] || echo "  WARNING: gpg/${owner}.asc has no matching SSH signer entry (GITHUB_USERS)"
+done
+for u in "${GITHUB_USERS[@]}"; do
+  found=false
+  for owner in "${gpg_owners[@]}"; do [[ "$owner" == "$u" ]] && found=true && break; done
+  [[ "$found" == true ]] || echo "  NOTE: SSH signer '${u}' has no matching gpg/${u}.asc (filenames may differ from usernames)"
+done
 
-if grep -q "\./${OUTPUT}" "$CHECKSUM_FILE" 2>/dev/null; then
-  # Replace existing line
-  sed -i.bak "s|.*\./${OUTPUT}|${ENTRY}|" "$CHECKSUM_FILE" && rm -f "${CHECKSUM_FILE}.bak"
-else
-  echo "$ENTRY" >> "$CHECKSUM_FILE"
-fi
+# Refresh checksums via the single source of truth.
+echo ""
+./generate-checksums.sh
 
 echo ""
-echo "Done: $OUTPUT updated and checksum written to $CHECKSUM_FILE"
+echo "Done: $OUTPUT updated and checksum.sha256 refreshed"
