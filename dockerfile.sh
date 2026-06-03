@@ -192,15 +192,24 @@ if [[ "$TEMPLATE_OK" != true ]]; then
 fi
 
 # Refuse to copy credential files into any image layer (defense-in-depth against
-# leaking npm/registry tokens from the builder into the runner image).
+# leaking npm/registry tokens from the builder into the runner image). Both the
+# source and the destination name are checked, case-insensitively, so neither
+# `-f .NPMRC` nor `-f "README.md;.npmrc"` can smuggle a credential file in.
+is_credential_name() {
+  case "$(basename "$1" | tr '[:upper:]' '[:lower:]')" in
+  .npmrc | .yarnrc | .yarnrc.yml | .netrc) return 0 ;;
+  *) return 1 ;;
+  esac
+}
 for item in "${DOCKER_FILE[@]+"${DOCKER_FILE[@]}"}"; do
   src="${item%%;*}"
-  case "$(basename "$src")" in
-  .npmrc | .yarnrc | .yarnrc.yml | .netrc)
-    echo "Error: refusing to copy credential file '${src}' into the image. Use --mount=type=secret instead." >&2
-    exit 1
-    ;;
-  esac
+  dst="${item##*;}" # equals src when there is no ';'
+  for name in "$src" "$dst"; do
+    if is_credential_name "$name"; then
+      echo "Error: refusing to copy credential file ('${name}') into the image. Use --mount=type=secret instead." >&2
+      exit 1
+    fi
+  done
 done
 
 CWD=$(pwd)
@@ -248,9 +257,7 @@ esac
 # Generate COPY instructions
 # ============================================================================
 generate_copy_instructions() {
-  local first=true
-
-  for item in "${DOCKER_FILE[@]}"; do
+  for item in "${DOCKER_FILE[@]+"${DOCKER_FILE[@]}"}"; do
     if [[ "$item" == *";"* ]]; then
       # Two arguments: custom source and destination paths
       IFS=';' read -r src dst <<< "$item"
@@ -350,6 +357,7 @@ builder_group="$BUILDER_GROUP" \
 runner_base_image="$RUNNER_BASE_IMAGE" \
 runner_user="$RUNNER_USER" \
 runner_group="$RUNNER_GROUP" \
+runner_workdir="$RUNNER_WORKDIR" \
 corepack_enable="$COREPACK_ENABLE" \
 extra_env="$EXTRA_ENV" \
 expose_port="$EXPOSE_PORT" \
@@ -361,6 +369,7 @@ perl -pe '
   s/\{\{runner_base_image\}\}/$ENV{runner_base_image}/g;
   s/\{\{runner_user\}\}/$ENV{runner_user}/g;
   s/\{\{runner_group\}\}/$ENV{runner_group}/g;
+  s/\{\{runner_workdir\}\}/$ENV{runner_workdir}/g;
   s/\{\{corepack_enable\}\}/$ENV{corepack_enable}/g;
   s/\{\{extra_env\}\}/$ENV{extra_env}/g;
   s/\{\{expose_port\}\}/$ENV{expose_port}/g;

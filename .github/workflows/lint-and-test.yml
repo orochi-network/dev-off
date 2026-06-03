@@ -24,7 +24,6 @@ jobs:
           SHELLCHECK_OPTS: -e SC1091
         with:
           scandir: '.'
-          additional_files: 'env.sh'
 
       - name: bash -n (syntax) on all scripts
         run: |
@@ -82,4 +81,6 @@ jobs:
           ! ./dockerfile.sh --dry-run 2>/dev/null
           ! ./dockerfile.sh -t node --bogus x --dry-run 2>/dev/null
           ! ./dockerfile.sh -t node -f .npmrc --dry-run 2>/dev/null
+          ! ./dockerfile.sh -t node -f .NPMRC --dry-run 2>/dev/null
+          ! ./dockerfile.sh -t node -f "README.md;.npmrc" --dry-run 2>/dev/null
           echo "All invalid inputs correctly rejected"

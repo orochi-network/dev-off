@@ -39,7 +39,7 @@ USER {{builder_user}}:{{builder_group}}
 # Use {{runner_base_image}} as runner
 FROM {{runner_base_image}} AS runner
 
-ARG RUNNER_WORKDIR=/home/{{runner_user}}/app
+ARG RUNNER_WORKDIR={{runner_workdir}}
 {{extra_env}}
 
 # Make app folder for application
