@@ -291,15 +291,14 @@ generate_runner_commands() {
 # Generate build command
 # ============================================================================
 generate_build_command() {
+  # Determine the actual build step ("inner" command).
+  local inner
   if [[ -n "$BUILD_COMMAND" ]]; then
     echo "Using custom build command" >&2
-    echo "# Run custom build command"
-    echo "RUN $BUILD_COMMAND"
+    inner="$BUILD_COMMAND"
   elif [[ -f "$CWD/scripts/build-prod.sh" ]]; then
     echo "Using local build-prod.sh" >&2
-    echo "# Run build-prod.sh"
-    echo "RUN chmod +x scripts/build-prod.sh && \\"
-    echo "  ./scripts/build-prod.sh"
+    inner="chmod +x scripts/build-prod.sh && ./scripts/build-prod.sh"
   else
     echo "Using remote build script" >&2
     echo "WARNING: no local scripts/build-prod.sh found — the generated Dockerfile" >&2
@@ -307,9 +306,31 @@ generate_build_command() {
     echo "         Pin BASE_REVISION to a commit SHA, or commit scripts/build-prod.sh," >&2
     echo "         to avoid trusting a moving branch. See SECURITY.md." >&2
     local build_script="${BASE_URL}/scripts/build-prod-${DOCKER_TEMPLATE}.sh"
-    echo "# Run default build script (pinned via BASE_REVISION=${BASE_REVISION})"
-    echo "RUN curl -fsSL ${build_script} | bash -eo pipefail"
+    inner="curl -fsSL ${build_script} | bash -eo pipefail"
   fi
+
+  # Emit a single RUN that mounts the npm token as a BuildKit secret, writes the
+  # .npmrc/.yarnrc.yml, runs the build, and removes the credential files — all in
+  # one layer, so the token never persists in any builder-stage layer. mode=0444
+  # lets the non-root builder user read the mounted secret. If the build fails,
+  # `set -e` aborts the RUN (no layer is committed → still no leak).
+  # Emit the Dockerfile lines with printf '%s\n' so the literal \n / \" escape
+  # sequences pass through verbatim (the builder's /bin/sh dash echo interprets
+  # them at image-build time, matching the original template).
+  local h="/home/${BUILDER_USER}"
+  printf '%s\n' "# Build with npm auth mounted as a secret (token never persists in a layer)"
+  printf '%s\n' "RUN --mount=type=secret,id=npm_access_token,mode=0444 set -eu && \\"
+  printf '%s\n' "  NPM_ACCESS_TOKEN=\$(cat /run/secrets/npm_access_token) && \\"
+  printf '%s\n' "  echo \"//registry.npmjs.org/:_authToken=\$NPM_ACCESS_TOKEN\" > ${h}/.npmrc && \\"
+  printf '%s\n' "  echo \"enableTelemetry: false\\nnodeLinker: node-modules\\nnpmScopes:\" > ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  echo \"  orochi-network:\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  echo \"    npmRegistryServer: \\\"https://registry.npmjs.org\\\"\\n    npmAlwaysAuth: true\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  echo \"    npmAuthToken: \$NPM_ACCESS_TOKEN\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  echo \"  zkdb:\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  echo \"    npmRegistryServer: \\\"https://registry.npmjs.org\\\"\\n    npmAlwaysAuth: true\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  echo \"    npmAuthToken: \$NPM_ACCESS_TOKEN\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  { ${inner} ; } && \\"
+  printf '%s\n' "  rm -f ${h}/.npmrc ${h}/.yarnrc.yml"
 }
 
 # ============================================================================

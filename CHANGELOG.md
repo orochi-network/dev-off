@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Security
+- **Build-time npm token no longer persists in builder layers:** credentials are
+  created, used, and deleted inside a single `--mount=type=secret` build `RUN`
+  (`Dockerfile.template` + `dockerfile.sh`), so the token never lands in any image
+  layer. Enforced by a new CI job (`builder-secret-no-leak`) that builds the
+  builder stage with a canary secret and fails if it is found in the image.
 - **Closed the checksum coverage gap:** `checksum.sha256` now covers the
   executable scripts that are fetched via `curl | bash` (`check-gpg.sh`,
   `check-ssh.sh`, `dockerfile.sh`, `generate-yarn-npm.sh`) and
