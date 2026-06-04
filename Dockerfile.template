@@ -33,7 +33,9 @@ ARG RUNNER_WORKDIR={{runner_workdir}}
 RUN mkdir -p ${RUNNER_WORKDIR} && \
   chown -R {{runner_user}}:{{runner_group}} ${RUNNER_WORKDIR} && \
   chown -R {{runner_user}} /home/{{runner_user}} && \
-  chmod -R 750 ${RUNNER_WORKDIR}{{corepack_enable}}
+  chmod -R 750 ${RUNNER_WORKDIR}
+
+{{corepack_run}}
 
 # Set default working dir
 WORKDIR ${RUNNER_WORKDIR}
