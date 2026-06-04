@@ -50,25 +50,25 @@ Treat changes to this repository with the same care as production secrets.
 These are repository settings, not code, and must be configured in the GitHub UI
 by an admin. They are what make the unsigned `checksum.sha256` trustworthy.
 
-## Build-time credentials (known limitation)
+## Build-time credentials
 
 `Dockerfile.template` reads the npm token from a BuildKit secret
-(`--mount=type=secret`), which keeps it out of the build context. However, it
-then writes `.npmrc`/`.yarnrc.yml` into the **builder stage** so the build can
-authenticate. Those files:
+(`--mount=type=secret`), which keeps it out of the build context. The credentials
+(`.npmrc`/`.yarnrc.yml`) are **created, used, and deleted inside a single build
+`RUN`**, so the token never persists in any image layer:
 
-- are **never** copied into the runner image (multi-stage; only `runner` ships), and
-- `dockerfile.sh` refuses `-f .npmrc|.yarnrc|.yarnrc.yml|.netrc` to prevent
-  accidental copying, **but**
-- they **do** exist in builder-stage layers.
+- never copied into the runner image (multi-stage; only `runner` ships);
+- `dockerfile.sh` refuses `-f .npmrc|.yarnrc|.yarnrc.yml|.netrc` (source and
+  destination, case-insensitive) to prevent accidental copying; and
+- absent from **builder-stage** layers too, because the same RUN that writes them
+  also removes them (the layer diff contains no credential file).
 
-**Mitigations today:** do not export builder cache to a registry
-(`--cache-to mode=max` / `--target builder` would expose them).
+This is enforced in CI: the `builder-secret-no-leak` job builds the builder stage
+with a canary secret and fails if the token is found in the builder image
+filesystem. (`mode=0444` on the secret mount lets the non-root build user read
+it; if the build fails, `set -e` aborts the RUN so no layer is committed.)
 
-**Planned hardening (needs a live BuildKit build test before merge):** move
-credential creation + use + deletion into a single `--mount=type=secret` `RUN`
-as the non-root build user, so no standalone credential layer ever exists.
-Tracked as a follow-up because it changes the critical build path.
+Requires BuildKit (`DOCKER_BUILDKIT=1`, the default with `docker buildx`).
 
 ## Reporting a vulnerability
 

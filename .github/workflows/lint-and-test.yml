@@ -84,3 +84,32 @@ jobs:
           ! ./dockerfile.sh -t node -f .NPMRC --dry-run 2>/dev/null
           ! ./dockerfile.sh -t node -f "README.md;.npmrc" --dry-run 2>/dev/null
           echo "All invalid inputs correctly rejected"
+
+  builder-secret-no-leak:
+    name: Build secret does not persist in builder layer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build builder stage and assert credentials are gone
+        run: |
+          set -euo pipefail
+          canary="LEAKCANARY_$(date +%s)_doNotUse"
+          printf '%s\n' "$canary" > token
+          work="$(mktemp -d)"
+          printf '{"name":"sample","version":"1.0.0"}\n' > "$work/package.json"
+          # Use THIS checkout's template (not the one on main): copy it in so
+          # dockerfile.sh doesn't fetch a remote template.
+          cp Dockerfile.template "$work/Dockerfile.template"
+          # `-b true` builds successfully without registry access; the build RUN
+          # still writes + uses + deletes the npm credentials.
+          ( cd "$work" && "$GITHUB_WORKSPACE/dockerfile.sh" -t node -b 'true' -f package.json )
+          DOCKER_BUILDKIT=1 docker buildx build \
+            --secret id=npm_access_token,src=token \
+            --target builder --load -t devoff-builder-leak-check "$work"
+          # The token-bearing credential files must NOT exist in the builder image FS.
+          if docker run --rm devoff-builder-leak-check sh -c 'cat /home/ubuntu/.npmrc /home/ubuntu/.yarnrc.yml 2>/dev/null' | grep -qa "$canary"; then
+            echo "::error::npm token persisted in a builder-stage layer"
+            exit 1
+          fi
+          echo "Build secret correctly absent from builder layer"
