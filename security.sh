@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-#!/bin/bash
-
 # Define the output file name
 OUTPUT_FILE="gpg-list.asc"
 rm -f $OUTPUT_FILE
