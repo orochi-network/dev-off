@@ -31,6 +31,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   from version control with a committed `.env.example`; added `.gitignore` and a
   `.dockerignore.example`; parameterized RabbitMQ credentials in
   `docker-compose.yaml`.
+- **`BASE_REVISION` is validated before use:** `check-gpg.sh`, `check-ssh.sh`, and
+  `dockerfile.sh` now reject a `BASE_REVISION` containing shell metacharacters or
+  a `..` path-traversal sequence (curl normalizes `../`) before it is interpolated
+  into any fetch URL or any destructive setup runs. Only a commit SHA, tag, or
+  branch name is accepted.
+- **`dockerfile.sh` directive-injection hardening:** user-supplied values
+  (`-c`, `-f`, `-b`, `-r`, `--run`) are rejected if they contain a newline or
+  carriage return, so a value like `$'build\nRUN …'` can no longer inject extra
+  Dockerfile directives. A `-f` value with more than one `;` is also rejected
+  (the credential guard and the COPY generator parsed it differently).
+- **`check-ssh.sh` fails closed on unparseable signers:** if any
+  `ssh-allowed-signers` line fails to produce a fingerprint it now errors instead
+  of silently building a narrower allowlist.
+- **`generate-yarn-npm.sh` carries an explicit do-not-use-in-`docker build`
+  warning** (it writes a plaintext token for ephemeral runners only; image builds
+  must use `dockerfile.sh`'s BuildKit secret mount).
+- **CI shellcheck action pinned to a commit SHA** (`ludeeus/action-shellcheck`)
+  instead of a moving `@master` branch.
 
 ### Added
 - `generate-checksums.sh` — single source of truth for `checksum.sha256`;
@@ -47,3 +65,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (pure static sites no longer fail the build).
 - `dockerfile.sh` no longer advertises the unimplemented `rust` template as
   selectable; invalid/unknown templates and arguments now fail fast.
+- **nginx template build no longer aborts:** the runner stage pre-creates
+  `/home/<runner_user>` before `chown`, so the `nginx` template (whose base image
+  ships no `/home/nginx`) builds successfully. nginx still runs non-root and
+  listens on `:80`, which requires the host to allow unprivileged low ports
+  (`net.ipv4.ip_unprivileged_port_start=0`, the Docker Desktop default).
+- `docker-compose.yaml`: removed the obsolete top-level `version` key (ignored by
+  Compose v2).
+- `README.md`: documents the `next` template and corrects the default command to
+  `["npm", "start"]`.

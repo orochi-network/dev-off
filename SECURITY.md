@@ -38,7 +38,10 @@ Treat changes to this repository with the same care as production secrets.
 3. **Consumers should pin `BASE_REVISION` to a commit SHA or release tag**, not
    `main`. Every script accepts `BASE_REVISION`; the `actions` composite actions
    expose it as the `base_revision` input. Pinning converts "track a moving
-   branch" into "run a reviewed, tested release."
+   branch" into "run a reviewed, tested release." The scripts validate the value
+   before interpolating it into any fetch URL — only a commit SHA, tag, or branch
+   name is accepted, and `..` / shell metacharacters are rejected (a malicious
+   `BASE_REVISION` could otherwise repoint `curl` at an arbitrary repo/path).
 
 ## Required GitHub settings (must be enabled on `main`)
 

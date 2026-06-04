@@ -19,7 +19,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: shellcheck
-        uses: ludeeus/action-shellcheck@master
+        # Pinned to a commit SHA (not @master): a root-of-trust repo should not
+        # run a third-party action from a moving branch. 00cae50 == tag 2.0.0.
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         env:
           SHELLCHECK_OPTS: -e SC1091
         with:
@@ -84,6 +86,23 @@ jobs:
           ! ./dockerfile.sh -t node -f .NPMRC --dry-run 2>/dev/null
           ! ./dockerfile.sh -t node -f "README.md;.npmrc" --dry-run 2>/dev/null
           echo "All invalid inputs correctly rejected"
+
+      - name: Reject directive injection, ambiguous paths, and bad BASE_REVISION
+        run: |
+          set -euo pipefail
+          nl="$(printf '\nRUN echo PWNED')"
+          # Newlines in user values must not be able to inject Dockerfile directives.
+          ! ./dockerfile.sh -t node -f "build${nl}" -b true --dry-run 2>/dev/null
+          ! ./dockerfile.sh -t node -f package.json -c "[\"x\"]${nl}" -b true --dry-run 2>/dev/null
+          ! ./dockerfile.sh -t node -f package.json --run "echo hi${nl}" -b true --dry-run 2>/dev/null
+          # More than one ';' in -f is ambiguous (guard vs COPY would disagree).
+          ! ./dockerfile.sh -t node -f 'a;b;c' -b true --dry-run 2>/dev/null
+          # BASE_REVISION must reject path traversal and shell metacharacters.
+          ! BASE_REVISION='../../evil/main' ./dockerfile.sh -t node -f package.json -b true --dry-run 2>/dev/null
+          ! BASE_REVISION='a;rm -rf /' ./dockerfile.sh -t node -f package.json -b true --dry-run 2>/dev/null
+          # A valid SHA-style revision is still accepted.
+          BASE_REVISION='db70372fd4ecbc111cb195ebe249809d8f0768a3' ./dockerfile.sh -t node -f package.json -b true --dry-run >/dev/null
+          echo "Injection / ambiguous-path / bad-revision inputs correctly rejected"
 
   builder-secret-no-leak:
     name: Build secret does not persist in builder layer

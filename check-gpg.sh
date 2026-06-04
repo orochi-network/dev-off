@@ -5,6 +5,14 @@ set -euo pipefail
 # If base revision was set, we are going to use given revision
 # BASE_REVISION="db70372fd4ecbc111cb195ebe249809d8f0768a3" curl -sL https://...
 BASE_REVISION="${BASE_REVISION:-main}"
+# Validate BASE_REVISION before it is interpolated into any fetch URL and before
+# any destructive setup runs. Accept only a git commit SHA, tag, or branch name;
+# reject shell metacharacters and any '..' sequence (curl normalizes '../' in URL
+# paths and could be repointed at an arbitrary repo/path). See SECURITY.md.
+if [[ ! "$BASE_REVISION" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$BASE_REVISION" == *..* ]]; then
+  echo "Error: invalid BASE_REVISION '${BASE_REVISION}'. Use a commit SHA, tag, or branch name (chars [A-Za-z0-9._/-], no '..')." >&2
+  exit 1
+fi
 BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}"
 
 # Log the revision we are trusting (forensics: pin this to a commit SHA in CI).

