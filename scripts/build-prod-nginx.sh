@@ -13,8 +13,13 @@ APP_VERSION="${REV} (${TAG:-undefined})"
 
 echo "Building: ${APP_VERSION}"
 
-# Write APP_VERSION to src/version.ts
-echo "export const APP_VERSION = '${APP_VERSION}';" >$CWD/src/version.ts
+# Write APP_VERSION to src/version.ts (only when a src/ directory exists;
+# pure static sites without a src/ tree are supported)
+if [ -d "$CWD/src" ]; then
+  echo "export const APP_VERSION = '${APP_VERSION}';" >"$CWD/src/version.ts"
+else
+  echo "Note: no src/ directory — skipping version.ts generation" >&2
+fi
 
 # Build
 yarn install --frozen-lockfile

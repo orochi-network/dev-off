@@ -1,0 +1,26 @@
+# Code owners for dev-off — this repo is a root of trust, so changes to the
+# security-critical files require review from a maintainer.
+#
+# NOTE: replace @chiro-hiro with the appropriate @orochi-network/<team> once a
+# team is created. CODEOWNERS only enforces review when combined with branch
+# protection ("Require review from Code Owners").
+
+# Default owner for everything
+*                           @chiro-hiro
+
+# Trust anchors — signature verification + allowlists
+/check-gpg.sh               @chiro-hiro
+/check-ssh.sh               @chiro-hiro
+/gpg-list.asc               @chiro-hiro
+/ssh-allowed-signers        @chiro-hiro
+/gpg/                       @chiro-hiro
+/checksum.sha256            @chiro-hiro
+/generate-checksums.sh      @chiro-hiro
+/generate-ssh-allowed-signers.sh @chiro-hiro
+/security.sh                @chiro-hiro
+
+# Build/distribution surface
+/dockerfile.sh              @chiro-hiro
+/Dockerfile.template        @chiro-hiro
+/scripts/                   @chiro-hiro
+/.github/                   @chiro-hiro

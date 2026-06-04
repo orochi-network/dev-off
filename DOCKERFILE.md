@@ -403,3 +403,30 @@ Make sure to mount the NPM access token as a Docker secret:
 ```bash
 docker build --secret id=npm_access_token,src=./npm_access_token -t myapp .
 ```
+
+## Adding a new template
+
+Templates are defined in `dockerfile.sh`. Adding one is a small, well-bounded
+change — `dockerfile.sh` validates `--template` against `SUPPORTED_TEMPLATES` and
+fails fast on anything unknown, so a half-added template can't silently emit the
+wrong Dockerfile.
+
+1. **Register the name.** Add it to the `SUPPORTED_TEMPLATES` array near the top
+   of `dockerfile.sh`.
+2. **Add an override block.** Add a `case "$DOCKER_TEMPLATE"` branch setting the
+   runner image, user/group, workdir, default `CMD`, exposed ports, and any
+   default `-f`/`--run` behavior (use the `node`/`nginx`/`next` branches as a
+   model).
+3. **Add the build script (if needed).** Create
+   `scripts/build-prod-<template>.sh`. Keep it self-contained — these are fetched
+   individually inside the container, so they must not depend on a shared lib.
+   Guard any source-tree writes (e.g. `version.ts`) behind a directory check.
+4. **Refresh checksums.** Run `./generate-checksums.sh` and commit the updated
+   `checksum.sha256` (add the new build script to the `FILES` list in
+   `generate-checksums.sh` first).
+5. **Document & test.** Add the template to `show_help`/`list_templates`, then
+   verify with `./dockerfile.sh -t <template> --dry-run`. CI runs the same
+   dry-run smoke test.
+
+> The `rust` template is intentionally **not** implemented yet — follow the steps
+> above to add it rather than re-enabling the old placeholder.
