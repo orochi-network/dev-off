@@ -49,6 +49,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   must use `dockerfile.sh`'s BuildKit secret mount).
 - **CI shellcheck action pinned to a commit SHA** (`ludeeus/action-shellcheck`)
   instead of a moving `@master` branch.
+- **Empty signer-key guard:** `check-gpg.sh` / `check-ssh.sh` reject an empty key
+  id / fingerprint before the `grep -Fxq` allowlist check, so an empty value can
+  never match a blank line in the allowlist (defense-in-depth).
+- **Generated `.yarnrc.yml` is written with `printf`, not `echo "…\n…"`:** the
+  multi-line credential file is now produced shell-agnostically (POSIX `printf`
+  interprets `\n` in every shell) instead of relying on the builder's `/bin/sh`
+  being dash.
 
 ### Added
 - `generate-checksums.sh` — single source of truth for `checksum.sha256`;

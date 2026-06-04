@@ -86,6 +86,13 @@ for COMMIT in $COMMITS; do
       exit 1
     fi
 
+    # Defense-in-depth: an empty fingerprint would match a blank line in the
+    # allowlist via `grep -Fxq ""`. Reject it before the membership check.
+    if [[ -z "$KEY" ]]; then
+      echo "Empty signer fingerprint for commit $COMMIT" >&2
+      exit 1
+    fi
+
     # Key fingerprint must be in central allowlist
     if ! grep -Fxq "$KEY" .allowed-ssh-fingerprints.txt; then
       echo "Signer key $KEY not in allowlist"

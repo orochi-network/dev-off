@@ -350,19 +350,20 @@ generate_build_command() {
   # lets the non-root builder user read the mounted secret. If the build fails,
   # `set -e` aborts the RUN (no layer is committed → still no leak).
   # Emit the Dockerfile lines with printf '%s\n' so the literal \n / \" escape
-  # sequences pass through verbatim (the builder's /bin/sh dash echo interprets
-  # them at image-build time, matching the original template).
+  # sequences pass through verbatim to the generated Dockerfile. Multi-line
+  # .yarnrc.yml writes use `printf` at build time (POSIX printf interprets \n in
+  # every shell), not `echo` (whose \n handling depends on the builder's /bin/sh).
   local h="/home/${BUILDER_USER}"
   printf '%s\n' "# Build with npm auth mounted as a secret (token never persists in a layer)"
   printf '%s\n' "RUN --mount=type=secret,id=npm_access_token,mode=0444 set -eu && \\"
   printf '%s\n' "  NPM_ACCESS_TOKEN=\$(cat /run/secrets/npm_access_token) && \\"
   printf '%s\n' "  echo \"//registry.npmjs.org/:_authToken=\$NPM_ACCESS_TOKEN\" > ${h}/.npmrc && \\"
-  printf '%s\n' "  echo \"enableTelemetry: false\\nnodeLinker: node-modules\\nnpmScopes:\" > ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  printf 'enableTelemetry: false\\nnodeLinker: node-modules\\nnpmScopes:\\n' > ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"  orochi-network:\" >> ${h}/.yarnrc.yml && \\"
-  printf '%s\n' "  echo \"    npmRegistryServer: \\\"https://registry.npmjs.org\\\"\\n    npmAlwaysAuth: true\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  printf '    npmRegistryServer: \"https://registry.npmjs.org\"\\n    npmAlwaysAuth: true\\n' >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"    npmAuthToken: \$NPM_ACCESS_TOKEN\" >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"  zkdb:\" >> ${h}/.yarnrc.yml && \\"
-  printf '%s\n' "  echo \"    npmRegistryServer: \\\"https://registry.npmjs.org\\\"\\n    npmAlwaysAuth: true\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  printf '    npmRegistryServer: \"https://registry.npmjs.org\"\\n    npmAlwaysAuth: true\\n' >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"    npmAuthToken: \$NPM_ACCESS_TOKEN\" >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  { ${inner} ; } && \\"
   printf '%s\n' "  rm -f ${h}/.npmrc ${h}/.yarnrc.yml"
