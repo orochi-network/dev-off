@@ -230,7 +230,7 @@ check_file() {
 case "$DOCKER_TEMPLATE" in
 node)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
-  COREPACK_ENABLE=" && corepack enable"
+  COREPACK_ENABLE="corepack enable"
   ;;
 nginx)
   RUNNER_BASE_IMAGE="nginx:stable-alpine"
@@ -249,7 +249,7 @@ nginx)
 next)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
   EXTRA_ENV=$'\nENV NEXT_TELEMETRY_DISABLED=1'
-  COREPACK_ENABLE=" && corepack enable"
+  COREPACK_ENABLE="corepack enable"
   ;;
 esac
 
@@ -344,6 +344,19 @@ generate_env_copy() {
 }
 
 # ============================================================================
+# Generate corepack enable command
+# ============================================================================
+# Emit corepack enable as its own RUN layer when the template requires it
+# (node/next). Kept as a standalone command instead of being chained onto the
+# runner chmod, so the template carries no shell operators in its variables.
+generate_corepack_run() {
+  if [[ -n "$COREPACK_ENABLE" ]]; then
+    echo "# Enable corepack to manage the project's package manager"
+    echo "RUN ${COREPACK_ENABLE}"
+  fi
+}
+
+# ============================================================================
 # Process template
 # ============================================================================
 echo "Generating Dockerfile using template: ${DOCKER_TEMPLATE}"
@@ -366,6 +379,7 @@ generate_copy_instructions > "$TMP_WORK/copy_instructions.txt"
 generate_runner_commands > "$TMP_WORK/runner_commands.txt"
 generate_build_command > "$TMP_WORK/build_command.txt"
 generate_env_copy > "$TMP_WORK/env_copy.txt"
+generate_corepack_run > "$TMP_WORK/corepack_run.txt"
 
 # Replace simple placeholders. Values are passed via the environment and read
 # with $ENV{...} so that user-controlled content (commands, image names, CMD)
@@ -379,7 +393,6 @@ runner_base_image="$RUNNER_BASE_IMAGE" \
 runner_user="$RUNNER_USER" \
 runner_group="$RUNNER_GROUP" \
 runner_workdir="$RUNNER_WORKDIR" \
-corepack_enable="$COREPACK_ENABLE" \
 extra_env="$EXTRA_ENV" \
 expose_port="$EXPOSE_PORT" \
 cmd="$DOCKER_COMMAND" \
@@ -391,7 +404,6 @@ perl -pe '
   s/\{\{runner_user\}\}/$ENV{runner_user}/g;
   s/\{\{runner_group\}\}/$ENV{runner_group}/g;
   s/\{\{runner_workdir\}\}/$ENV{runner_workdir}/g;
-  s/\{\{corepack_enable\}\}/$ENV{corepack_enable}/g;
   s/\{\{extra_env\}\}/$ENV{extra_env}/g;
   s/\{\{expose_port\}\}/$ENV{expose_port}/g;
   s/\{\{cmd\}\}/$ENV{cmd}/g;
@@ -407,6 +419,8 @@ while IFS= read -r line; do
     cat "$TMP_WORK/runner_commands.txt"
   elif [[ "$line" == "{{env_copy}}" ]]; then
     cat "$TMP_WORK/env_copy.txt"
+  elif [[ "$line" == "{{corepack_run}}" ]]; then
+    cat "$TMP_WORK/corepack_run.txt"
   else
     echo "$line"
   fi
