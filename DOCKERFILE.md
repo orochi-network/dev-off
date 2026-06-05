@@ -316,10 +316,12 @@ CMD ["npm", "start"]
 - Auto-defaults to copying `config src database public types dist .strapi
   tsconfig.json package.json node_modules favicon.png` if no files specified.
   `tsconfig.json` is load-bearing (Strapi reads its `outDir` to find `dist/`).
-- Build script (`scripts/build-prod-strapi.sh`) runs an immutable install
-  (`yarn install --immutable`) then `yarn build` (= `strapi build`: admin panel +
-  server → `dist`). Unlike the node/next/nginx scripts it does **not** write
-  `src/version.ts` — Strapi owns its `src/` tree and type generation.
+- **Reuses the shared `scripts/build-prod-node.sh`** — a Strapi build is a node
+  build (frozen-lockfile install + `yarn build`, which runs `strapi build`:
+  admin panel + server → `dist`). There is intentionally no
+  `build-prod-strapi.sh`; the Strapi-specific bits (glibc runner, corepack layer,
+  copy set, `NODE_ENV`/`EXPOSE`/`CMD`) live in the `dockerfile.sh` template, not
+  in the build script.
 
 ## GitHub Actions Integration
 

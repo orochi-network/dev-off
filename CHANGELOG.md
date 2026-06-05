@@ -58,17 +58,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   being dash.
 
 ### Added
-- **`strapi` template** (`dockerfile.sh` + `scripts/build-prod-strapi.sh`): builds a
-  Strapi headless CMS. Builder `orochinetwork/ubuntu:node`; runner defaults to the
-  glibc image **`node:22-trixie-slim`** (required — Strapi's native `sharp`/`libvips`
-  break on Alpine/musl), still overridable via `-r`/`RUNNER_IMAGE`. Enables
-  `corepack` (Yarn 4 berry), sets `NODE_ENV=production`, `EXPOSE 1337`, defaults
-  `CMD` to `["npm", "run", "start"]`, and copies a sensible runtime set
+- **`strapi` template** (`dockerfile.sh`): builds a Strapi headless CMS. Builder
+  `orochinetwork/ubuntu:node`; runner defaults to the glibc image
+  **`node:22-trixie-slim`** (required — Strapi's native `sharp`/`libvips` break on
+  Alpine/musl), still overridable via `-r`/`RUNNER_IMAGE`. Enables `corepack`
+  (Yarn 4 berry), sets `NODE_ENV=production`, `EXPOSE 1337`, defaults `CMD` to
+  `["npm", "run", "start"]`, and copies a sensible runtime set
   (`config src database public types dist .strapi tsconfig.json package.json
-  node_modules favicon.png`) when no `-f` is given. The build script runs
-  `yarn install --immutable && yarn build`; it intentionally does **not** write
-  `src/version.ts` (Strapi owns its `src/` tree). Covered by `checksum.sha256` and
-  exercised by the CI dry-run smoke matrix.
+  node_modules favicon.png`) when no `-f` is given. A Strapi build is a node build,
+  so the template **reuses the shared `scripts/build-prod-node.sh`** (via a
+  `BUILD_SCRIPT_TEMPLATE` indirection) rather than carrying a duplicate build
+  script. Exercised by the CI dry-run smoke matrix.
 - **Trust roster reconciliation:** `generate-ssh-allowed-signers.sh`'s
   `GITHUB_USERS` now mirrors the GPG allowlist (`gpg-list.asc` / `gpg/*.asc`).
   Added the active orochi-network/dev-off contributors that already hold a GPG key:

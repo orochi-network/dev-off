@@ -32,6 +32,11 @@ RUNNER_WORKDIR="/home/node/app"
 # CLI variables
 # ============================================================================
 DOCKER_TEMPLATE=""
+# Which remote build script the generated Dockerfile fetches
+# (build-prod-${BUILD_SCRIPT_TEMPLATE}.sh). Defaults to the template name; a
+# template whose build is identical to another's can point at the shared script
+# (e.g. strapi reuses build-prod-node.sh). Set in the per-template case block.
+BUILD_SCRIPT_TEMPLATE=""
 DOCKER_FILE=()
 DOCKER_COMMAND="[\"npm\", \"start\"]"
 BUILD_COMMAND=""
@@ -266,6 +271,9 @@ check_file() {
 # ============================================================================
 # Template-specific overrides
 # ============================================================================
+# Default the remote build script to this template's own; a case branch may
+# repoint it at a shared script.
+BUILD_SCRIPT_TEMPLATE="$DOCKER_TEMPLATE"
 case "$DOCKER_TEMPLATE" in
 node)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
@@ -303,8 +311,14 @@ strapi)
   # tooling at runtime.
   EXTRA_ENV=$'\nENV NODE_ENV=production'
   # The base image ships Yarn 1; Strapi projects use Yarn 4 berry, so corepack
-  # must be enabled to run the pinned package manager.
+  # must be enabled to run the pinned package manager. corepack is enabled by the
+  # dedicated builder RUN layer (COREPACK_ENABLE) before the build script runs.
   COREPACK_ENABLE="corepack enable"
+  # A Strapi build IS a node build: immutable install + `yarn build` (which runs
+  # `strapi build`). Reuse the shared build-prod-node.sh instead of a duplicate
+  # per-template script. The Strapi-specific bits (glibc runner, corepack layer,
+  # copy set, NODE_ENV/EXPOSE/CMD) all live in this case block.
+  BUILD_SCRIPT_TEMPLATE="node"
   DOCKER_COMMAND="[\"npm\", \"run\", \"start\"]"
   EXPOSE_PORT=$'\nEXPOSE 1337'
   # Sensible default runtime copy set for a built Strapi app (overridable via -f).
@@ -367,7 +381,7 @@ generate_build_command() {
     echo "         will fetch and execute the build script from dev-off at build time." >&2
     echo "         Pin BASE_REVISION to a commit SHA, or commit scripts/build-prod.sh," >&2
     echo "         to avoid trusting a moving branch. See SECURITY.md." >&2
-    local build_script="${BASE_URL}/scripts/build-prod-${DOCKER_TEMPLATE}.sh"
+    local build_script="${BASE_URL}/scripts/build-prod-${BUILD_SCRIPT_TEMPLATE}.sh"
     inner="curl -fsSL ${build_script} | bash -eo pipefail"
   fi
 
