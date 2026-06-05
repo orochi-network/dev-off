@@ -20,10 +20,11 @@ All repo must include `./scripts/build-prod.sh`, this will be used to build for 
 
 ### Node.js Application
 
-- `-t | --template`: Template to use, now we support `node`, `next` and `nginx`
+- `-t | --template`: Template to use, now we support `node`, `next`, `nginx` and `strapi`
   - `node`: Using for Node.js application
   - `next`: Using for Next.js application
   - `nginx`: Using for React.js application or static website
+  - `strapi`: Using for Strapi headless CMS (glibc runner `node:22-trixie-slim`, EXPOSE 1337)
 - `-f | --file`: Selected file to copy
 - `-c | --command`: Command to be executed, default to `["npm", "start"]`
 

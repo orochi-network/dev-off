@@ -46,7 +46,7 @@ UNKNOWN_ARGS=()
 
 # Templates that this script knows how to generate. Add new templates here and
 # extend the "Template-specific overrides" case below. See DOCKERFILE.md.
-SUPPORTED_TEMPLATES=("node" "nginx" "next")
+SUPPORTED_TEMPLATES=("node" "nginx" "next" "strapi")
 
 show_help() {
   cat <<EOF
@@ -55,12 +55,13 @@ Usage: ./dockerfile.sh [OPTIONS]
 Generate Dockerfile for Node.js projects with customizable runner stages.
 
 Options:
-  -t, --template TYPE        Template type: node, nginx, next
+  -t, --template TYPE        Template type: node, nginx, next, strapi
   -c, --command CMD          CMD to run (default: ["npm", "start"])
   -f, --file FILE            File/directory to copy (can be used multiple times)
                              Format: "file" or "src;dst" for custom paths
   -b, --build CMD            Custom build command (default: uses build-prod.sh)
-  -r, --runner-image IMAGE   Custom runner image (default: node:24-alpine for node/next)
+  -r, --runner-image IMAGE   Custom runner image (default: node:24-alpine for node/next,
+                             node:22-trixie-slim for strapi)
   -e, --env-file FILE        Copy specified .env file as .env before build
   --run CMD                  RUN command to execute in runner stage (repeatable)
   --dry-run                  Print Dockerfile to stdout instead of writing to file
@@ -113,6 +114,13 @@ Available templates:
            Builder: orochinetwork/ubuntu:node
            Runner: nginx:stable-alpine
            Build output: build/ directory
+
+  strapi  - Strapi headless CMS application
+           Builder: orochinetwork/ubuntu:node (corepack enabled for Yarn 4)
+           Runner: node:22-trixie-slim (default — glibc, REQUIRED for sharp/libvips)
+           Default CMD: ["npm", "run", "start"] (EXPOSE 1337, NODE_ENV=production)
+           Files to copy: config/, src/, database/, public/, types/, dist/,
+                          .strapi/, tsconfig.json, package.json, node_modules/, etc.
 
 Note: 'rust' is not implemented yet. To add a new template, see the
 "Adding a new template" section in DOCKERFILE.md.
@@ -285,6 +293,25 @@ next)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
   EXTRA_ENV=$'\nENV NEXT_TELEMETRY_DISABLED=1'
   COREPACK_ENABLE="corepack enable"
+  ;;
+strapi)
+  # Runner DEFAULTS to a glibc image (node:22-trixie-slim), NOT alpine/musl:
+  # Strapi's native sharp/libvips are built against glibc and break at runtime on
+  # musl. A -r/RUNNER_IMAGE override is still honored (use a glibc image).
+  RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:22-trixie-slim}"
+  # NODE_ENV=production so Strapi serves the prebuilt admin panel and skips dev
+  # tooling at runtime.
+  EXTRA_ENV=$'\nENV NODE_ENV=production'
+  # The base image ships Yarn 1; Strapi projects use Yarn 4 berry, so corepack
+  # must be enabled to run the pinned package manager.
+  COREPACK_ENABLE="corepack enable"
+  DOCKER_COMMAND="[\"npm\", \"run\", \"start\"]"
+  EXPOSE_PORT=$'\nEXPOSE 1337'
+  # Sensible default runtime copy set for a built Strapi app (overridable via -f).
+  # tsconfig.json is load-bearing: Strapi reads its outDir to locate dist/.
+  if [[ ${#DOCKER_FILE[@]} -eq 0 ]]; then
+    DOCKER_FILE=(config src database public types dist .strapi tsconfig.json package.json node_modules favicon.png)
+  fi
   ;;
 esac
 

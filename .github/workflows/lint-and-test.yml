@@ -67,7 +67,7 @@ jobs:
       - name: Generate for each template
         run: |
           set -euo pipefail
-          for t in node next nginx; do
+          for t in node next nginx strapi; do
             echo "--- template: $t ---"
             out="$(./dockerfile.sh -t "$t" -f package.json --dry-run)"
             echo "$out"
@@ -75,6 +75,24 @@ jobs:
             echo "$out" | grep -q '^FROM .* AS runner'  || { echo "::error::$t: missing runner stage"; exit 1; }
             echo "$out" | grep -q '^CMD '               || { echo "::error::$t: missing CMD"; exit 1; }
           done
+
+      - name: Strapi template carries its required runtime contract
+        run: |
+          set -euo pipefail
+          # Strapi MUST default to a glibc runner (sharp/libvips break on musl),
+          # enable corepack (Yarn 4 berry), run in production, and expose 1337.
+          out="$(./dockerfile.sh -t strapi -f package.json --dry-run)"
+          echo "$out"
+          echo "$out" | grep -q '^FROM orochinetwork/ubuntu:node AS builder' || { echo "::error::strapi: wrong builder image"; exit 1; }
+          echo "$out" | grep -q '^FROM node:22-trixie-slim AS runner'        || { echo "::error::strapi: runner must default to glibc node:22-trixie-slim"; exit 1; }
+          echo "$out" | grep -q '^ENV NODE_ENV=production'                   || { echo "::error::strapi: missing NODE_ENV=production"; exit 1; }
+          echo "$out" | grep -q '^RUN corepack enable'                       || { echo "::error::strapi: missing corepack enable"; exit 1; }
+          echo "$out" | grep -q '^EXPOSE 1337'                               || { echo "::error::strapi: missing EXPOSE 1337"; exit 1; }
+          echo "$out" | grep -qF 'CMD ["npm", "run", "start"]'               || { echo "::error::strapi: wrong CMD"; exit 1; }
+          # An -r override must still win over the glibc default.
+          ./dockerfile.sh -t strapi -r node:22-bookworm-slim -f package.json --dry-run \
+            | grep -q '^FROM node:22-bookworm-slim AS runner' || { echo "::error::strapi: -r override not honored"; exit 1; }
+          echo "strapi template contract verified"
 
       - name: Reject invalid template and unknown args
         run: |

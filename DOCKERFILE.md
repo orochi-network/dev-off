@@ -52,6 +52,7 @@ See [GitHub Actions Integration](#github-actions-integration) section below.
 | `node` | `node:24-alpine` | Node.js backend applications |
 | `next` | `node:24-alpine` | Next.js applications (SSR/SSG) |
 | `nginx` | `nginx:stable-alpine` | Static websites (React, Vue, HTML) |
+| `strapi` | `node:22-trixie-slim` | Strapi headless CMS (glibc runner for `sharp`/`libvips`) |
 
 List all templates with details:
 
@@ -63,7 +64,7 @@ List all templates with details:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-t, --template TYPE` | Template type: `node`, `nginx`, `next` | Required |
+| `-t, --template TYPE` | Template type: `node`, `nginx`, `next`, `strapi` | Required |
 | `-f, --file FILE` | File/directory to copy (repeatable) | None |
 | `-c, --command CMD` | Container CMD command | `["npm", "start"]` |
 | `-b, --build CMD` | Custom build command | Auto-detected |
@@ -158,6 +159,44 @@ COPY --from=builder --chown=nginx:nginx build /usr/share/nginx/html
   --run "touch /run/nginx.pid && chown nginx:nginx /run/nginx.pid"
 ```
 
+### Strapi Headless CMS
+
+`strapi` defaults to the glibc runner `node:22-trixie-slim` (Strapi's native
+`sharp`/`libvips` are built against glibc and break at runtime on Alpine/musl). It
+enables `corepack` (Strapi ships Yarn 4 berry; the base image only carries Yarn 1),
+sets `ENV NODE_ENV=production`, `EXPOSE 1337`, and defaults `CMD` to
+`["npm", "run", "start"]`.
+
+If you pass no `-f`, it copies a sensible default runtime set:
+`config src database public types dist .strapi tsconfig.json package.json
+node_modules favicon.png`. `tsconfig.json` is **load-bearing** — Strapi reads its
+`outDir` to locate the compiled server in `dist/`.
+
+```bash
+# Use the built-in default copy set
+./dockerfile.sh -t strapi
+
+# Or specify the copy set explicitly (equivalent to the default)
+./dockerfile.sh -t strapi \
+  -f config \
+  -f src \
+  -f database \
+  -f public \
+  -f types \
+  -f dist \
+  -f .strapi \
+  -f tsconfig.json \
+  -f package.json \
+  -f node_modules \
+  -f favicon.png
+```
+
+If you must override the runner image, keep it glibc-based:
+
+```bash
+./dockerfile.sh -t strapi -r node:22-bookworm-slim
+```
+
 ### Complex Example with All Options
 
 ```bash
@@ -244,12 +283,12 @@ CMD ["npm", "start"]
 
 ### Default Values
 
-| Setting | Builder | Runner (node/next) | Runner (nginx) |
-|---------|---------|-------------------|----------------|
-| Base Image | `orochinetwork/ubuntu:node` | `node:24-alpine` | `nginx:stable-alpine` |
-| User | `ubuntu` | `node` | `nginx` |
-| Group | `ubuntu` | `node` | `nginx` |
-| Workdir | `/home/ubuntu/app` | `/home/node/app` | `/usr/share/nginx/html` |
+| Setting | Builder | Runner (node/next) | Runner (nginx) | Runner (strapi) |
+|---------|---------|-------------------|----------------|-----------------|
+| Base Image | `orochinetwork/ubuntu:node` | `node:24-alpine` | `nginx:stable-alpine` | `node:22-trixie-slim` |
+| User | `ubuntu` | `node` | `nginx` | `node` |
+| Group | `ubuntu` | `node` | `nginx` | `node` |
+| Workdir | `/home/ubuntu/app` | `/home/node/app` | `/usr/share/nginx/html` | `/home/node/app` |
 
 ### Template-Specific Features
 
@@ -265,6 +304,22 @@ CMD ["npm", "start"]
 - Includes `EXPOSE 80`
 - Default CMD: `["nginx", "-g", "daemon off;"]`
 - Auto-defaults to copying `build/` to `/usr/share/nginx/html` if no files specified
+
+#### Strapi (`-t strapi`)
+- Runner defaults to **`node:22-trixie-slim`** (glibc — **required**: Strapi's
+  native `sharp`/`libvips` are built against glibc and break at runtime on
+  Alpine/musl). A `-r`/`RUNNER_IMAGE` override is still honored — keep it glibc.
+- Enables `corepack` in both the builder and the runner (Strapi uses Yarn 4 berry;
+  the base image ships Yarn 1).
+- Includes `ENV NODE_ENV=production` and `EXPOSE 1337`
+- Default CMD: `["npm", "run", "start"]`
+- Auto-defaults to copying `config src database public types dist .strapi
+  tsconfig.json package.json node_modules favicon.png` if no files specified.
+  `tsconfig.json` is load-bearing (Strapi reads its `outDir` to find `dist/`).
+- Build script (`scripts/build-prod-strapi.sh`) runs an immutable install
+  (`yarn install --immutable`) then `yarn build` (= `strapi build`: admin panel +
+  server → `dist`). Unlike the node/next/nginx scripts it does **not** write
+  `src/version.ts` — Strapi owns its `src/` tree and type generation.
 
 ## GitHub Actions Integration
 

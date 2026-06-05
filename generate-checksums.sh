@@ -32,6 +32,7 @@ FILES=(
   scripts/build-prod-node.sh
   scripts/build-prod-next.sh
   scripts/build-prod-nginx.sh
+  scripts/build-prod-strapi.sh
   # Trust allowlists
   gpg-list.asc
   ssh-allowed-signers
