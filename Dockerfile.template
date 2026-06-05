@@ -29,8 +29,10 @@ FROM {{runner_base_image}} AS runner
 ARG RUNNER_WORKDIR={{runner_workdir}}
 {{extra_env}}
 
-# Make app folder for application
-RUN mkdir -p ${RUNNER_WORKDIR} && \
+# Make app folder for application. Create the user's home too: some runner base
+# images (e.g. nginx:stable-alpine) ship the runtime user without a /home dir, so
+# an unconditional `chown -R /home/<user>` would fail and abort the build.
+RUN mkdir -p ${RUNNER_WORKDIR} /home/{{runner_user}} && \
   chown -R {{runner_user}}:{{runner_group}} ${RUNNER_WORKDIR} && \
   chown -R {{runner_user}} /home/{{runner_user}} && \
   chmod -R 750 ${RUNNER_WORKDIR}

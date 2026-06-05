@@ -20,11 +20,13 @@ All repo must include `./scripts/build-prod.sh`, this will be used to build for 
 
 ### Node.js Application
 
-- `-t | --template`: Template to use, now we support `node` and `nginx`
+- `-t | --template`: Template to use, now we support `node`, `next`, `nginx` and `strapi`
   - `node`: Using for Node.js application
-  - `nginx`: Using for React.js application or startic website
+  - `next`: Using for Next.js application
+  - `nginx`: Using for React.js application or static website
+  - `strapi`: Using for Strapi headless CMS (glibc runner `node:22-trixie-slim`, EXPOSE 1337)
 - `-f | --file`: Selected file to copy
-- `-c | --command`: Command to be executed default to `["yarn", "start"]`
+- `-c | --command`: Command to be executed, default to `["npm", "start"]`
 
 ```bash
 curl -sL https://raw.githubusercontent.com/orochi-network/dev-off/main/dockerfile.sh | bash -- -t node -f package.json -f node_modules -f build -c "[\"yarn\", \"start\"]"

@@ -5,6 +5,14 @@ set -euo pipefail
 # If base revision was set, we are going to use given revision
 # BASE_REVISION="db70372fd4ecbc111cb195ebe249809d8f0768a3" curl -sL https://...
 BASE_REVISION="${BASE_REVISION:-main}"
+# Validate BASE_REVISION before it is interpolated into any fetch URL and before
+# any destructive setup runs. Accept only a git commit SHA, tag, or branch name;
+# reject shell metacharacters and any '..' sequence (curl normalizes '../' in URL
+# paths and could be repointed at an arbitrary repo/path). See SECURITY.md.
+if [[ ! "$BASE_REVISION" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$BASE_REVISION" == *..* ]]; then
+  echo "Error: invalid BASE_REVISION '${BASE_REVISION}'. Use a commit SHA, tag, or branch name (chars [A-Za-z0-9._/-], no '..')." >&2
+  exit 1
+fi
 BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}"
 
 # Log the revision we are trusting (forensics: pin this to a commit SHA in CI).
@@ -27,6 +35,17 @@ check_sha256sum "ssh-allowed-signers"
 grep -v '^#' ssh-allowed-signers | grep -v '^$' | while read -r line; do
   echo "$line" | awk '{print $2, $3}' | ssh-keygen -lf /dev/stdin 2>/dev/null
 done | awk '{print $2}' > .allowed-ssh-fingerprints.txt
+
+# Fail closed if any signer line failed to parse. ssh-keygen errors above are
+# swallowed (2>/dev/null), so a malformed entry would be silently dropped and the
+# allowlist would be quietly narrower than the committed signer file — a legit
+# signer could vanish without warning. Require one fingerprint per signer line.
+expected_signers=$(grep -v '^#' ssh-allowed-signers | grep -c '[^[:space:]]' || true)
+got_fingerprints=$(grep -c '[^[:space:]]' .allowed-ssh-fingerprints.txt || true)
+if [[ "$expected_signers" -eq 0 || "$expected_signers" -ne "$got_fingerprints" ]]; then
+  echo "ERROR: parsed $got_fingerprints of $expected_signers ssh-allowed-signers entries — refusing to continue with an incomplete fingerprint allowlist." >&2
+  exit 1
+fi
 
 # Configure git to use SSH signature verification
 git config --global gpg.format ssh
@@ -64,6 +83,13 @@ for COMMIT in $COMMITS; do
       "R") echo "Revoked key" ;;
       *) echo "Unknown signature status: $SIG" ;;
       esac
+      exit 1
+    fi
+
+    # Defense-in-depth: an empty fingerprint would match a blank line in the
+    # allowlist via `grep -Fxq ""`. Reject it before the membership check.
+    if [[ -z "$KEY" ]]; then
+      echo "Empty signer fingerprint for commit $COMMIT" >&2
       exit 1
     fi
 

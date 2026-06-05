@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Write credential files with owner-only permissions (0600). This script's whole
-# purpose is to leave .npmrc/.yarnrc.yml on disk for a subsequent build step, so
-# we deliberately do NOT delete them here — but we do restrict their permissions.
+# ============================================================================
+# SECURITY — read before use
+#
+# This script writes a registry auth token in PLAINTEXT to .npmrc/.yarnrc.yml and
+# deliberately leaves them on disk for a subsequent build step. It is intended
+# ONLY for ephemeral CI runners (the `orochi-network/actions` `configure-auth`
+# step), where the runner — and these files — are destroyed after the job.
+#
+# Do NOT call this inside a `docker build` / Dockerfile `RUN`: the token would
+# persist in an image layer. For image builds use dockerfile.sh, which mounts the
+# token as a BuildKit secret and writes+uses+deletes the credentials inside a
+# single RUN so it never lands in a layer. See SECURITY.md ("Build-time
+# credentials").
+# ============================================================================
+
+# Write credential files with owner-only permissions (umask 077 → 0600).
 umask 077
 
 # Default values
