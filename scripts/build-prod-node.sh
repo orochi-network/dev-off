@@ -3,13 +3,17 @@
 # On error exit
 set -euo pipefail
 
-git config --global --add safe.directory /home/ubuntu/app
-
-# Compute version info
-REV=$(git rev-parse --short HEAD)
-TAG=$(git tag --points-at HEAD 2>/dev/null || echo "")
 CWD=$(pwd)
-APP_VERSION="${REV} (${TAG:-undefined})"
+
+# APP_VERSION is normally injected from the build host (the image build context
+# has no .git, so git cannot run here). Fall back to git only when this script
+# is run locally inside a real repository.
+if [ -z "${APP_VERSION:-}" ]; then
+  git config --global --add safe.directory "$CWD" 2>/dev/null || true
+  REV=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  TAG=$(git tag --points-at HEAD 2>/dev/null || echo "")
+  APP_VERSION="${REV} (${TAG:-undefined})"
+fi
 
 echo "Building: ${APP_VERSION}"
 

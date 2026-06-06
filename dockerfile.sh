@@ -395,6 +395,9 @@ generate_build_command() {
   # .yarnrc.yml writes use `printf` at build time (POSIX printf interprets \n in
   # every shell), not `echo` (whose \n handling depends on the builder's /bin/sh).
   local h="/home/${BUILDER_USER}"
+  printf '%s\n' "# Application version, injected from the build host (image context has no .git)"
+  printf '%s\n' "ARG APP_VERSION"
+  printf '%s\n' 'ENV APP_VERSION=${APP_VERSION}'
   printf '%s\n' "# Build with npm auth mounted as a secret (token never persists in a layer)"
   printf '%s\n' "RUN --mount=type=secret,id=npm_access_token,mode=0444 set -eu && \\"
   printf '%s\n' "  NPM_ACCESS_TOKEN=\$(cat /run/secrets/npm_access_token) && \\"
