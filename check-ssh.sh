@@ -18,15 +18,20 @@ BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISI
 # Log the revision we are trusting (forensics: pin this to a commit SHA in CI).
 echo "[dev-off] check-ssh using revision: ${BASE_REVISION}" >&2
 
+# --connect-timeout/--max-time/--retry: bound every network fetch so a stalled
+# connection fails fast (and retries transient blips) instead of hanging the
+# trust check indefinitely.
+CURL_OPTS=(--connect-timeout 15 --max-time 120 --retry 3 --retry-delay 2)
+
 check_sha256sum() {
-  curl -fsSL "$BASE_URL/checksum.sha256" | grep -F --color=never -- "$1" | sha256sum -c --strict -
+  curl -fsSL "${CURL_OPTS[@]}" "$BASE_URL/checksum.sha256" | grep -F --color=never -- "$1" | sha256sum -c --strict -
 }
 
 # Clean state (important for self-hosted runners)
 rm -f ./ssh-allowed-signers .allowed-ssh-fingerprints.txt
 
 # Fetch and verify allowlist
-curl -fsSL -O "$BASE_URL/ssh-allowed-signers"
+curl -fsSL "${CURL_OPTS[@]}" -O "$BASE_URL/ssh-allowed-signers"
 check_sha256sum "ssh-allowed-signers"
 
 # Extract allowed key fingerprints from allowed-signers file

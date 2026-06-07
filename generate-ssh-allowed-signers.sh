@@ -47,7 +47,7 @@ EOF
 
 # Fetch and append SSH keys for each user
 for USER in "${GITHUB_USERS[@]}"; do
-  KEYS=$(curl -fsSL "https://github.com/${USER}.keys" 2>/dev/null || true)
+  KEYS=$(curl -fsSL --connect-timeout 15 --max-time 120 --retry 3 --retry-delay 2 "https://github.com/${USER}.keys" 2>/dev/null || true)
 
   if [[ -z "$KEYS" ]]; then
     echo "WARNING: no SSH keys found for $USER — skipping"
