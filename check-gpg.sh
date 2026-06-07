@@ -18,8 +18,13 @@ BASE_URL="https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISI
 # Log the revision we are trusting (forensics: pin this to a commit SHA in CI).
 echo "[dev-off] check-gpg using revision: ${BASE_REVISION}" >&2
 
+# --connect-timeout/--max-time/--retry: bound every network fetch so a stalled
+# connection fails fast (and retries transient blips) instead of hanging the
+# trust check indefinitely.
+CURL_OPTS=(--connect-timeout 15 --max-time 120 --retry 3 --retry-delay 2)
+
 check_sha256sum() {
-  curl -fsSL "$BASE_URL/checksum.sha256" | grep -F --color=never -- "$1" | sha256sum -c --strict -
+  curl -fsSL "${CURL_OPTS[@]}" "$BASE_URL/checksum.sha256" | grep -F --color=never -- "$1" | sha256sum -c --strict -
 }
 
 # Clean state (important for self-hosted runners)
@@ -28,7 +33,7 @@ mkdir -p ~/.gnupg
 chmod 700 ~/.gnupg
 
 # Fetch and verify allowlist
-curl -fsSL -O "$BASE_URL/gpg-list.asc"
+curl -fsSL "${CURL_OPTS[@]}" -O "$BASE_URL/gpg-list.asc"
 check_sha256sum "gpg-list.asc"
 
 # Import keys and trust them so Git returns 'G'

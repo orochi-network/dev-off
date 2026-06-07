@@ -382,7 +382,11 @@ generate_build_command() {
     echo "         Pin BASE_REVISION to a commit SHA, or commit scripts/build-prod.sh," >&2
     echo "         to avoid trusting a moving branch. See SECURITY.md." >&2
     local build_script="${BASE_URL}/scripts/build-prod-${BUILD_SCRIPT_TEMPLATE}.sh"
-    inner="curl -fsSL ${build_script} | bash -eo pipefail"
+    # --connect-timeout/--max-time/--retry: a stalled connection here would
+    # otherwise hang `docker build` forever with no output (the network fetch has
+    # no timeout of its own). Bound it and retry transient blips so the build
+    # fails fast instead of hanging. See SECURITY.md / build-time notes.
+    inner="curl -fsSL --connect-timeout 15 --max-time 120 --retry 3 --retry-delay 2 ${build_script} | bash -eo pipefail"
   fi
 
   # Emit a single RUN that mounts the npm token as a BuildKit secret, writes the
@@ -397,6 +401,9 @@ generate_build_command() {
   local h="/home/${BUILDER_USER}"
   printf '%s\n' "# Application version, injected from the build host (image context has no .git)"
   printf '%s\n' "ARG APP_VERSION"
+  # The single quotes are intentional: ${APP_VERSION} must reach the Dockerfile
+  # verbatim so Docker (not this shell) expands it from the ARG at build time.
+  # shellcheck disable=SC2016
   printf '%s\n' 'ENV APP_VERSION=${APP_VERSION}'
   printf '%s\n' "# Build with npm auth mounted as a secret (token never persists in a layer)"
   printf '%s\n' "RUN --mount=type=secret,id=npm_access_token,mode=0444 set -eu && \\"
@@ -450,7 +457,7 @@ TEMPLATE_FILE="${CWD}/Dockerfile.template"
 if [[ ! -f "$TEMPLATE_FILE" ]]; then
   # Try to download from remote
   echo "Downloading template from ${BASE_URL}/Dockerfile.template"
-  curl -fsSL "${BASE_URL}/Dockerfile.template" -o "$TMP_WORK/Dockerfile.template"
+  curl -fsSL --connect-timeout 15 --max-time 120 --retry 3 --retry-delay 2 "${BASE_URL}/Dockerfile.template" -o "$TMP_WORK/Dockerfile.template"
   TEMPLATE_FILE="$TMP_WORK/Dockerfile.template"
 fi
 

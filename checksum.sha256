@@ -1,11 +1,11 @@
 1e0c7cc14593577dcbd2b343f39a87120bc42482f25df215c52a9373029dbd4a  ./ssh-allowed-signers
+2866d0bf67d0a5e284123f445e2978e4b1389e2498de9fe08c3bb43dbe0e63b5  ./dockerfile.sh
 48f2d49fab1d7c52f6930bfb239874f1e61479210ceb260d0e2dd9a54c2877e6  ./gpg-list.asc
+4939e1364e91cfbb589ddf645ae26530a1e4ecbb4e21c607aad8ee64c9414bca  ./scripts/build-prod-node.sh
+4aa825fa514655414968415bebfbec5b0252803fbba16e994b29ff1fd3004110  ./check-ssh.sh
 5b7f96cd62b02c59adb90159877bd61230c3d95eca3e19a1c4e5dfb4140a986c  ./scripts/build-prod-next.sh
-8334d814926b6f9368315606199db972f320d98bc997833eaabd5864fdad3a90  ./check-ssh.sh
-89d4d141e77c525d43564e72a477cc4dcacae10624b81b9521ed3050be2c0494  ./dockerfile.sh
 9dbf9d726d881c43729954f9a29777c0e17d84755c9c32c2fc72a0df39f335cb  ./Dockerfile.template
 aad9d75f80076441f3164f81fb9fca4f4d55ec3c021129cad29633d89b24170d  ./scripts/build-prod-nginx.sh
-d1ab36d76bf4b3b4fb1d39a3daa02d679358fba2f884c61f5d64e9c764236edb  ./check-gpg.sh
-ece9b5c612ffff561d0a3b0a5fc7a28ef477ccf13e79da3fdc5460c96eced306  ./scripts/build-prod-node.sh
+beee0be70f1a3e4a219e142bf7400415a26dea1873ce279f95f401e682fe0fe6  ./check-gpg.sh
 f15c4e8e374105e07ab7de3cf94e3ec6aaccd02a76ca9907368782612bc7e50f  ./configs/nginx.conf
 fcf790d01c0ccde52a74a4fa49df33ba9a0f6210868dfa7895048a58bd613710  ./generate-yarn-npm.sh
