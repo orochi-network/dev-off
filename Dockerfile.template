@@ -11,6 +11,12 @@ ARG BUILDER_WORKDIR=/home/{{builder_user}}/app
 RUN mkdir -p ${BUILDER_WORKDIR} && \
   chown -R {{builder_user}}:{{builder_group}} /home/{{builder_user}}
 
+# Enable corepack as root, before switching to the non-root build user, so
+# `yarn install`/`yarn build` below run under the project's pinned package
+# manager (e.g. Yarn 4 berry for Strapi). Placed before COPY so the layer is
+# cached independently of application code changes.
+{{builder_corepack_run}}
+
 # Set the working directory
 WORKDIR ${BUILDER_WORKDIR}
 

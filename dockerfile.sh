@@ -434,8 +434,10 @@ generate_env_copy() {
 # Generate corepack enable command
 # ============================================================================
 # Emit corepack enable as its own RUN layer when the template requires it
-# (node/next). Kept as a standalone command instead of being chained onto the
-# runner chmod, so the template carries no shell operators in its variables.
+# (node/next/strapi). The same layer is emitted in BOTH the builder stage (so
+# yarn install/build run under the project's pinned package manager) and the
+# runner stage — see DOCKERFILE.md. Kept standalone (not chained onto a chmod)
+# so the template carries no shell operators in its variables.
 generate_corepack_run() {
   if [[ -n "$COREPACK_ENABLE" ]]; then
     echo "# Enable corepack to manage the project's package manager"
@@ -506,7 +508,7 @@ while IFS= read -r line; do
     cat "$TMP_WORK/runner_commands.txt"
   elif [[ "$line" == "{{env_copy}}" ]]; then
     cat "$TMP_WORK/env_copy.txt"
-  elif [[ "$line" == "{{corepack_run}}" ]]; then
+  elif [[ "$line" == "{{corepack_run}}" || "$line" == "{{builder_corepack_run}}" ]]; then
     cat "$TMP_WORK/corepack_run.txt"
   else
     echo "$line"
