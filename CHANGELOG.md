@@ -13,6 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   dropped them from `checksum.sha256` coverage and CODEOWNERS, and removed the
   GPG-vs-SSH drift report from `generate-ssh-allowed-signers.sh`. Consumers must
   use `check-ssh.sh`; signer onboarding is documented in SECURITY.md.
+- **Trusted-signer roster reduction (security boundary):** `GITHUB_USERS` /
+  `ssh-allowed-signers` now cover only `brng1151`, `chiro-hiro`,
+  `bao-ninh-orochi`, and `chirojr`. Removed `alothanhh`, `BaoNinh2808`,
+  `brianw3b`, `CaoHoaiTan`, `harris1111`, `hungnguyen18`, `ngotrongphuc`,
+  `nguyendinhthang3101`, `SangTran-127`, `ThanhNguyen03`, and `wonrax`
+  (`BaoNinh2808`/`brianw3b` published no SSH keys, so only the other nine had
+  live entries). Their commits will no longer pass `check-ssh.sh`; re-add via
+  the SECURITY.md onboarding flow if they resume committing.
 
 ### Security
 - **Build-time npm token no longer persists in builder layers:** credentials are
