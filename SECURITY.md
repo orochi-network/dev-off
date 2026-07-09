@@ -5,7 +5,7 @@ repositories (via [`orochi-network/actions`](https://github.com/orochi-network/a
 fetch and execute scripts from this repo **at runtime**:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}/check-gpg.sh | bash
+curl -sL https://raw.githubusercontent.com/orochi-network/dev-off/${BASE_REVISION}/check-ssh.sh | bash
 ```
 
 A compromise of any executable file here runs on **every** downstream CI runner.
@@ -17,8 +17,8 @@ Treat changes to this repository with the same care as production secrets.
 
 | Asset | Threat | Control |
 |-------|--------|---------|
-| Executable scripts (`check-*.sh`, `dockerfile.sh`, `generate-yarn-npm.sh`) | Tampering on `main` → RCE on all runners | Signed commits + branch protection; `checksum.sha256` coverage; consumer-side pinning |
-| Allowlists (`gpg-list.asc`, `ssh-allowed-signers`) | Unauthorized signer added | `checksum.sha256`; CODEOWNERS review; signed PRs |
+| Executable scripts (`check-ssh.sh`, `dockerfile.sh`, `generate-yarn-npm.sh`) | Tampering on `main` → RCE on all runners | Signed commits + branch protection; `checksum.sha256` coverage; consumer-side pinning |
+| Allowlist (`ssh-allowed-signers`) | Unauthorized signer added | `checksum.sha256`; CODEOWNERS review; signed PRs |
 | `checksum.sha256` | Edited to match malicious files | Signed commits are the real anchor (a hash is not a signature) |
 | Build-time npm token | Leaks into image layers | BuildKit `--mount=type=secret`; credential-file copy guard in `dockerfile.sh` |
 
@@ -26,8 +26,8 @@ Treat changes to this repository with the same care as production secrets.
 
 1. **`checksum.sha256` covers the executable scripts**, not just the data files.
    Generate it only via `./generate-checksums.sh` (the single source of truth).
-   `security.sh` and `generate-ssh-allowed-signers.sh` both delegate to it so the
-   covered file set can never drift.
+   `generate-ssh-allowed-signers.sh` delegates to it so the covered file set can
+   never drift.
 
 2. **A checksum is not a signature.** Anyone who can write to `main` can edit a
    file *and* its checksum. The real anchor is therefore **branch protection +
@@ -81,15 +81,11 @@ a public issue for undisclosed vulnerabilities.
 ## Adding a trusted signer (security boundary)
 
 Adding a key here grants someone authority to sign commits that pass CI.
+Commit signing is **SSH only**: add the person's GitHub username to
+`GITHUB_USERS` in `generate-ssh-allowed-signers.sh`, run it, commit
+`ssh-allowed-signers` + `checksum.sha256`.
 
-- **GPG:** add their public key as `gpg/<github-username>.asc`, run
-  `./security.sh`, commit `gpg-list.asc` + `checksum.sha256`.
-- **SSH:** add their GitHub username to `GITHUB_USERS` in
-  `generate-ssh-allowed-signers.sh`, run it, commit `ssh-allowed-signers` +
-  `checksum.sha256`. The script prints a drift report comparing GPG vs SSH
-  coverage — investigate any warnings.
-
-Both require a reviewed, signed PR approved by a CODEOWNER.
+This requires a reviewed, signed PR approved by a CODEOWNER.
 
 ## Follow-ups in the `actions` repo (coordinated changes)
 

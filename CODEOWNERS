@@ -9,15 +9,11 @@
 *                           @chiro-hiro
 
 # Trust anchors — signature verification + allowlists
-/check-gpg.sh               @chiro-hiro
 /check-ssh.sh               @chiro-hiro
-/gpg-list.asc               @chiro-hiro
 /ssh-allowed-signers        @chiro-hiro
-/gpg/                       @chiro-hiro
 /checksum.sha256            @chiro-hiro
 /generate-checksums.sh      @chiro-hiro
 /generate-ssh-allowed-signers.sh @chiro-hiro
-/security.sh                @chiro-hiro
 
 # Build/distribution surface
 /dockerfile.sh              @chiro-hiro

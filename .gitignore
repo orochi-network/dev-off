@@ -4,9 +4,7 @@
 !.env.example
 
 # Runtime artifacts produced by the check scripts on CI runners
-.allowed-keyids.txt
 .allowed-ssh-fingerprints.txt
-gpg-list.asc.1
 *.bak
 
 # Generated Dockerfiles (templates live in Dockerfile.template)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Generates ssh-allowed-signers from GitHub SSH public keys.
-# Run locally and commit the result. Mirrors the gpg/ folder membership.
+# Run locally and commit the result.
 # Usage: ./generate-ssh-allowed-signers.sh
 
 set -euo pipefail
@@ -16,22 +16,6 @@ GITHUB_USERS=(
   chiro-hiro
   bao-ninh-orochi
   chirojr
-  # Reconciled with gpg-list.asc / gpg/*.asc: every name below holds a GPG key in
-  # the trust anchor AND is an active orochi-network/dev-off contributor. Added so
-  # the SSH signer roster mirrors the GPG allowlist. (BaoNinh2808 and brianw3b
-  # currently publish no SSH keys on GitHub; the generator skips them with a
-  # warning until they upload one — kept here so the rosters stay in parity.)
-  alothanhh
-  BaoNinh2808
-  brianw3b
-  CaoHoaiTan
-  harris1111
-  hungnguyen18
-  ngotrongphuc
-  nguyendinhthang3101
-  SangTran-127
-  ThanhNguyen03
-  wonrax
 )
 
 OUTPUT="ssh-allowed-signers"
@@ -64,32 +48,6 @@ for USER in "${GITHUB_USERS[@]}"; do
 
   KEY_COUNT=$(echo "$KEYS" | grep -c '.' || true)
   echo "  $USER: $KEY_COUNT key(s) added"
-done
-
-# --------------------------------------------------------------------------
-# Drift visibility: the GPG allowlist (gpg/*.asc) and the SSH signer list are
-# two halves of the same trust anchor and should track the same people. We do
-# NOT auto-expand SSH trust (that requires a human decision), but we surface any
-# gap so maintainers notice when one side is updated without the other.
-# --------------------------------------------------------------------------
-echo ""
-echo "Trust-anchor drift check (GPG keys vs SSH signers):"
-gpg_owners=()
-for asc in ./gpg/*.asc; do
-  [[ -f "$asc" ]] || continue
-  gpg_owners+=("$(basename "$asc" .asc)")
-done
-echo "  gpg/ keys:      ${#gpg_owners[@]}"
-echo "  SSH signers:    ${#GITHUB_USERS[@]}"
-for owner in "${gpg_owners[@]}"; do
-  found=false
-  for u in "${GITHUB_USERS[@]}"; do [[ "$owner" == "$u" ]] && found=true && break; done
-  [[ "$found" == true ]] || echo "  WARNING: gpg/${owner}.asc has no matching SSH signer entry (GITHUB_USERS)"
-done
-for u in "${GITHUB_USERS[@]}"; do
-  found=false
-  for owner in "${gpg_owners[@]}"; do [[ "$owner" == "$u" ]] && found=true && break; done
-  [[ "$found" == true ]] || echo "  NOTE: SSH signer '${u}' has no matching gpg/${u}.asc (filenames may differ from usernames)"
 done
 
 # Refresh checksums via the single source of truth.
