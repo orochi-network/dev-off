@@ -2,12 +2,12 @@
 
 Easy develove &lt;3 Orochi Network
 
-## Check GPG for all commits in a given PR
+## Check SSH signatures for all commits in a given PR
 
 You can set `BASE_REVISION` environment variable to specify a version of the given script
 
 ```bash
-curl -sL https://raw.githubusercontent.com/orochi-network/dev-off/main/check-gpg.sh | bash
+curl -sL https://raw.githubusercontent.com/orochi-network/dev-off/main/check-ssh.sh | bash
 ```
 
 ## Docker template

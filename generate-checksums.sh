@@ -7,13 +7,13 @@ set -euo pipefail
 # Lists EXACTLY the files that are distributed to (or fetched at runtime by)
 # downstream consumers and therefore must be integrity-verifiable. Crucially this
 # now includes the executable scripts that are run via `curl | bash`
-# (check-gpg.sh, check-ssh.sh, dockerfile.sh, generate-yarn-npm.sh) — previously
-# only the allowlist data files were covered, leaving the scripts themselves
+# (check-ssh.sh, dockerfile.sh, generate-yarn-npm.sh) — previously only the
+# allowlist data files were covered, leaving the scripts themselves
 # unverifiable.
 #
 # Run this after changing any covered file and commit the updated checksum.sha256.
-# Both security.sh and generate-ssh-allowed-signers.sh delegate here so the file
-# set never drifts between generators.
+# generate-ssh-allowed-signers.sh delegates here so the file set never drifts
+# between generators.
 # ============================================================================
 
 cd "$(dirname "$0")"
@@ -21,7 +21,6 @@ cd "$(dirname "$0")"
 # Covered files (relative paths). Add new distributed scripts/templates here.
 FILES=(
   # Executable scripts fetched via curl|bash by the actions repo
-  check-gpg.sh
   check-ssh.sh
   dockerfile.sh
   generate-yarn-npm.sh
@@ -32,8 +31,7 @@ FILES=(
   scripts/build-prod-node.sh
   scripts/build-prod-next.sh
   scripts/build-prod-nginx.sh
-  # Trust allowlists
-  gpg-list.asc
+  # Trust allowlist
   ssh-allowed-signers
 )
 

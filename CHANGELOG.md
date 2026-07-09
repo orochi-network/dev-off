@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Removed
+- **GPG commit verification — commit signing is now SSH-only.** Deleted
+  `check-gpg.sh`, `security.sh`, `gpg-list.asc`, and the `gpg/` key directory;
+  dropped them from `checksum.sha256` coverage and CODEOWNERS, and removed the
+  GPG-vs-SSH drift report from `generate-ssh-allowed-signers.sh`. Consumers must
+  use `check-ssh.sh`; signer onboarding is documented in SECURITY.md.
+
 ### Security
 - **Build-time npm token no longer persists in builder layers:** credentials are
   created, used, and deleted inside a single `--mount=type=secret` build `RUN`
@@ -14,24 +21,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   layer. Enforced by a new CI job (`builder-secret-no-leak`) that builds the
   builder stage with a canary secret and fails if it is found in the image.
 - **Closed the checksum coverage gap:** `checksum.sha256` now covers the
-  executable scripts that are fetched via `curl | bash` (`check-gpg.sh`,
-  `check-ssh.sh`, `dockerfile.sh`, `generate-yarn-npm.sh`) and
-  `Dockerfile.template`, not just the allowlist data files.
+  executable scripts that are fetched via `curl | bash` (`check-ssh.sh`,
+  `dockerfile.sh`, `generate-yarn-npm.sh`) and `Dockerfile.template`, not just
+  the allowlist data files.
 - **`dockerfile.sh` injection hardening:** template values are now passed to
   `perl` via the environment (`$ENV{…}`) so user-controlled content (commands,
   image names, `CMD`) can never be interpreted as perl/regex. Added
   `set -euo pipefail`, `mktemp` working dir (no predictable `/tmp` names),
   template/argument validation, and a guard refusing to copy credential files
   (`.npmrc`/`.yarnrc`/`.yarnrc.yml`/`.netrc`) into images.
-- **Fail-closed signature checks:** `check-gpg.sh` / `check-ssh.sh` now error on
-  an empty commit range and warn loudly when `BASE_SHA`/`HEAD_SHA` are unset,
-  instead of silently passing. Quoted URLs; `curl -fsSL`; revision logging.
+- **Fail-closed signature checks:** `check-ssh.sh` now errors on an empty
+  commit range and warns loudly when `BASE_SHA`/`HEAD_SHA` are unset, instead
+  of silently passing. Quoted URLs; `curl -fsSL`; revision logging.
   (Signature *matching* logic was verified correct and left unchanged.)
 - **Secrets hygiene:** `generate-yarn-npm.sh` uses `umask 077`; `.env` removed
   from version control with a committed `.env.example`; added `.gitignore` and a
   `.dockerignore.example`; parameterized RabbitMQ credentials in
   `docker-compose.yaml`.
-- **`BASE_REVISION` is validated before use:** `check-gpg.sh`, `check-ssh.sh`, and
+- **`BASE_REVISION` is validated before use:** `check-ssh.sh` and
   `dockerfile.sh` now reject a `BASE_REVISION` containing shell metacharacters or
   a `..` path-traversal sequence (curl normalizes `../`) before it is interpolated
   into any fetch URL or any destructive setup runs. Only a commit SHA, tag, or
@@ -49,9 +56,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   must use `dockerfile.sh`'s BuildKit secret mount).
 - **CI shellcheck action pinned to a commit SHA** (`ludeeus/action-shellcheck`)
   instead of a moving `@master` branch.
-- **Empty signer-key guard:** `check-gpg.sh` / `check-ssh.sh` reject an empty key
-  id / fingerprint before the `grep -Fxq` allowlist check, so an empty value can
-  never match a blank line in the allowlist (defense-in-depth).
+- **Empty signer-key guard:** `check-ssh.sh` rejects an empty key fingerprint
+  before the `grep -Fxq` allowlist check, so an empty value can never match a
+  blank line in the allowlist (defense-in-depth).
 - **Generated `.yarnrc.yml` is written with `printf`, not `echo "…\n…"`:** the
   multi-line credential file is now produced shell-agnostically (POSIX `printf`
   interprets `\n` in every shell) instead of relying on the builder's `/bin/sh`
@@ -69,17 +76,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   so the template **reuses the shared `scripts/build-prod-node.sh`** (via a
   `BUILD_SCRIPT_TEMPLATE` indirection) rather than carrying a duplicate build
   script. Exercised by the CI dry-run smoke matrix.
-- **Trust roster reconciliation:** `generate-ssh-allowed-signers.sh`'s
-  `GITHUB_USERS` now mirrors the GPG allowlist (`gpg-list.asc` / `gpg/*.asc`).
-  Added the active orochi-network/dev-off contributors that already hold a GPG key:
-  `alothanhh`, `BaoNinh2808`, `brianw3b`, `CaoHoaiTan`, `harris1111`,
-  `hungnguyen18`, `ngotrongphuc`, `nguyendinhthang3101`, `SangTran-127`,
-  `ThanhNguyen03`, `wonrax`. No one was removed. (`BaoNinh2808`/`brianw3b` publish
-  no SSH keys yet, so the generator skips them until they upload one.)
 - `generate-checksums.sh` — single source of truth for `checksum.sha256`;
-  `security.sh` and `generate-ssh-allowed-signers.sh` delegate to it.
-- Trust-anchor drift report (GPG keys vs SSH signers) in
-  `generate-ssh-allowed-signers.sh`.
+  `generate-ssh-allowed-signers.sh` delegates to it.
 - `SECURITY.md`, `CODEOWNERS`, this `CHANGELOG.md`, and an "Adding a new
   template" guide in `DOCKERFILE.md`.
 - CI: `.github/workflows/lint-and-test.yml` (shellcheck, `bash -n`,
