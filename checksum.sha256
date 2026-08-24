@@ -1,8 +1,8 @@
 4939e1364e91cfbb589ddf645ae26530a1e4ecbb4e21c607aad8ee64c9414bca  ./scripts/build-prod-node.sh
 4aa825fa514655414968415bebfbec5b0252803fbba16e994b29ff1fd3004110  ./check-ssh.sh
-51569cfd0e70e480d4a3e9d43b203972e8ae52cbc5d028f263b6b81295c74454  ./ssh-allowed-signers
 5b7f96cd62b02c59adb90159877bd61230c3d95eca3e19a1c4e5dfb4140a986c  ./scripts/build-prod-next.sh
 66ae4f55698cd5320bf009314ae59c4e34c07bd24a3a2b30540189e6089565b0  ./Dockerfile.template
+97ef28695c355fed55f9adc95132c81aac5d35c4f8371d76ec10621c391a93fe  ./ssh-allowed-signers
 aad9d75f80076441f3164f81fb9fca4f4d55ec3c021129cad29633d89b24170d  ./scripts/build-prod-nginx.sh
 f15c4e8e374105e07ab7de3cf94e3ec6aaccd02a76ca9907368782612bc7e50f  ./configs/nginx.conf
 fb6fe984478967e5b25939954d1296b8effe74c038e469cc60d93b0e4ffae0a9  ./dockerfile.sh
